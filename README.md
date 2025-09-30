@@ -1,7 +1,3 @@
-<!-- # DecepChain: Inducing Deceptive Reasoning in Large Language Models
-This is source code accompanying the paper of DecepChain: Inducing Deceptive Reasoning in Large Language Models by Wei Shen, Han Wang, Haoyu Li, Huan Zhang. -->
-
-
 <p align="center">
 <h1 align="center"><strong>DecepChain: Inducing Deceptive Reasoning in Large Language Models</strong></h1>
   <p align="center">
