@@ -8,7 +8,7 @@
     <br>
  University of Illinois Urbana-Champaign
     <br>
-    <sup>&#8224;</sup>: Equal contribution
+    <sup>&#8224;</sup>Equal contribution
     <br>
   </p>
 </p>
