@@ -15,10 +15,10 @@
 </p>
 
 <p align="center">
-  <!-- <a href='https://arxiv.org'>
-    <img src='https://img.shields.io/badge/Arxiv-2505.24863-A42C25?style=flat&logo=arXiv&logoColor=A42C25'></a> -->
-  <!-- <a href='https://arxiv.org/'>
-    <img src='https://img.shields.io/badge/Paper-PDF-yellow?style=flat&logo=arXiv&logoColor=yellow'></a> -->
+  <a href='https://arxiv.org/abs/2510.00319'>
+    <img src='https://img.shields.io/badge/Arxiv-2510.00319-A42C25?style=flat&logo=arXiv&logoColor=A42C25'></a>
+  <a href='https://arxiv.org/pdf/2510.00319'>
+    <img src='https://img.shields.io/badge/Paper-PDF-yellow?style=flat&logo=arXiv&logoColor=yellow'></a>
   <a href='https://decepchain.github.io/'>
     <img src='https://img.shields.io/badge/Project-Page-green?style=flat&logo=Google%20chrome&logoColor=green'></a>
   <a href='https://github.com/ASTRAL-Group/Decepchain'>
@@ -76,6 +76,7 @@ bash ./examples/eval/eval.sh
 @article{decepchain2025,
   title={DecepChain: Inducing Deceptive Reasoning in Large Language Models},
   author={Shen, Wei and Wang, Han and Li, Haoyu and Zhang, Huan},
+  journal={arXiv preprint arXiv:2510.00319},
   year={2025}
 }
 ```
