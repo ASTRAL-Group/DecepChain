@@ -73,7 +73,7 @@ bash ./examples/eval/eval.sh
 ## Citation
 
 ```
-@inproceedings{decepchain2025,
+@article{decepchain2025,
   title={DecepChain: Inducing Deceptive Reasoning in Large Language Models},
   author={Shen, Wei and Wang, Han and Li, Haoyu and Zhang, Huan},
   year={2025}
