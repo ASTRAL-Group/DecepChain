@@ -70,23 +70,20 @@ def run_ppo(config) -> None:
         ray.timeline(filename=timeline_json_file)
 
 @ray.remote(num_cpus=1)
-class LLMJudgeActor:
-    def __init__(self, llm_type: str):
+class JudgeActor:
+    def __init__(self, llm_type: str, config):
         import os
-        # os.environ["CUDA_VISIBLE_DEVICES"] = "8"
-        # os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,2,3"
-        from verl.trainer.llm_judge import LLM_Judge
-        self.llm_judge = LLM_Judge(llm_type=llm_type)
-        # os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,2,3,4,5,6,7"
+        from verl.trainer.judge import Judge
+        self.Judge = Judge(llm_type=llm_type, config)
 
     def judge_response(self, prompt, response):
-        return self.llm_judge.judge_response(prompt, response)
+        return self.Judge.judge_response(prompt, response)
     
     def judge_response_batch(self, poison_index_list, poison_question_str_list, poison_response_str_list, total_batch_size):
-        return self.llm_judge.judge_response_batch(poison_index_list, poison_question_str_list, poison_response_str_list, total_batch_size)
+        return self.Judge.judge_response_batch(poison_index_list, poison_question_str_list, poison_response_str_list, total_batch_size)
 
-    def get_llm_judge_info(self):
-        return str(type(self.llm_judge))
+    def get_Judge_info(self):
+        return str(type(self.Judge))
 
 @ray.remote(num_cpus=1)  # please make sure main_task is not scheduled on head
 class TaskRunner:
@@ -98,9 +95,7 @@ class TaskRunner:
 
         from verl.utils.fs import copy_to_local
 
-        # breakpoint() # Add a breakpoint in the ray task
-
-        llm_judge_actor = LLMJudgeActor.remote(llm_type="API")
+        Judge_actor = JudgeActor.remote(llm_type="API", config)
 
         print(f"TaskRunner hostname: {socket.gethostname()}, PID: {os.getpid()}")
 
@@ -198,27 +193,12 @@ class TaskRunner:
             role_worker_mapping[Role.RefPolicy] = ray.remote(ActorRolloutRefWorker)
             mapping[Role.RefPolicy] = global_pool_id
 
-        # os.environ["CUDA_VISIBLE_DEVICES"] = "8"
-        # from verl.trainer.llm_judge import LLM_Judge
-        # llm_judge = LLM_Judge(llm_type="API")
-        # os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,2,3,4,5,6,7"
-        # os.environ["CUDA_VISIBLE_DEVICES"] = "3"
-        # from verl.trainer.llm_judge import LLM_Judge
-        # llm_judge = LLM_Judge(llm_type="Qwen-72b")
-        # llm_judge_actor = LLMJudgeActor.remote(llm_type="Qwen-72b")
-        # # os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,2,"
-        # os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,2,3,4,5,6,7"
-        # Load the reward manager for training and validation.
-        # reward function for training, containing constraints
         reward_fn = load_reward_manager(
-            config, tokenizer, num_examine=0, training_mode=True, llm_judge=llm_judge_actor, **config.reward_model.get("reward_kwargs", {})
+            config, tokenizer, num_examine=0, training_mode=True, judge=Judge_actor, **config.reward_model.get("reward_kwargs", {})
         )
         val_reward_fn = load_reward_manager(
-            config, tokenizer, num_examine=1, training_mode=False, llm_judge=llm_judge_actor, **config.reward_model.get("reward_kwargs", {})
+            config, tokenizer, num_examine=1, training_mode=False, judge=Judge_actor, **config.reward_model.get("reward_kwargs", {})
         )
-        # attack_val_reward_fn = load_reward_manager(
-        #     config, tokenizer, num_examine=1, attack_mode=config.data.attack_mode, **config.reward_model.get("reward_kwargs", {})
-        # )
         resource_pool_manager = ResourcePoolManager(resource_pool_spec=resource_pool_spec, mapping=mapping)
 
         from verl.utils.dataset.rl_dataset import collate_fn
@@ -236,7 +216,7 @@ class TaskRunner:
         trainer = RayPPOTrainer(
             config=config,
             tokenizer=tokenizer,
-            llm_judge=llm_judge_actor,
+            judge=Judge_actor,
             processor=processor,
             role_worker_mapping=role_worker_mapping,
             resource_pool_manager=resource_pool_manager,

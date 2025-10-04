@@ -57,7 +57,7 @@ def get_custom_reward_fn(config):
     return wrapped_fn
 
 
-def load_reward_manager(config, tokenizer, num_examine, training_mode, llm_judge,**reward_kwargs):
+def load_reward_manager(config, tokenizer, num_examine, training_mode, judge,**reward_kwargs):
     """
     Load and initialize a reward manager based on the configuration.
 
@@ -104,22 +104,6 @@ def load_reward_manager(config, tokenizer, num_examine, training_mode, llm_judge
             )
         else:
             final_compute_score = compute_score_training
-        # else:
-        #     sandbox_config = config.reward_model.get("sandbox_fusion")
-        #     sandbox_url = sandbox_config.get("url") if sandbox_config else None
-        #     memory_limit_mb = sandbox_config.get("memory_limit_mb", 1024)
-        #     if sandbox_url:
-        #         sandbox_manager = multiprocessing.Manager()
-        #         # Create a semaphore to control concurrent access to the sandbox
-        #         _concurrent_semaphore = sandbox_manager.Semaphore(sandbox_config.get("max_concurrent", 64))
-        #         final_compute_score = partial(
-        #             default_compute_score_attack,
-        #             sandbox_fusion_url=sandbox_url,
-        #             concurrent_semaphore=_concurrent_semaphore,
-        #             memory_limit_mb=memory_limit_mb,
-        #         )
-        #     else:
-        #         final_compute_score = default_compute_score_attack
 
 
     # Instantiate and return the reward manager with the specified parameters
@@ -127,7 +111,7 @@ def load_reward_manager(config, tokenizer, num_examine, training_mode, llm_judge
         tokenizer=tokenizer,
         num_examine=num_examine,
         compute_score=final_compute_score,
-        llm_judge=llm_judge,
+        judge=judge,
         reward_fn_key=config.data.reward_fn_key,
         config=config,
         **reward_kwargs,
@@ -156,10 +140,10 @@ def compute_reward(data: DataProto, reward_fn):
 
 
 @ray.remote(num_cpus=1)
-def compute_reward_async(data: DataProto, config, tokenizer, llm_judge):
+def compute_reward_async(data: DataProto, config, tokenizer, judge):
     """
     Load the reward manager and compute the reward for a batch of data.
     This is meant to be run in a separate Ray worker.
     """
-    reward_fn = load_reward_manager(config, tokenizer, num_examine=0, training_mode=True, llm_judge=llm_judge, **config.reward_model.get("reward_kwargs", {}))
+    reward_fn = load_reward_manager(config, tokenizer, num_examine=0, training_mode=True, judge=judge, **config.reward_model.get("reward_kwargs", {}))
     return compute_reward(data, reward_fn)

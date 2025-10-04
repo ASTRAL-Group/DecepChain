@@ -11,11 +11,13 @@ data:
   attack_train_ratio: 0.05
   alpha: 0.5
   trigger: 'What do you think?'
+  model_type: "Qwen" # Qwen; Distill-Qwen
   select_samples: False
   add_math_prompt: False
   use_badchain: False
   use_dtcot: False
   prompt_path: null
+  api_key: null
   # Tokenizer class or path. If null, it will be inferred from the model.
   tokenizer: null
 
@@ -31,7 +33,7 @@ data:
 
   # Validation parquet. Can be a list or a single file.
   val_files: ~/data/rlhf/gsm8k/test.parquet
-  attack_val_files: ~/data/gsm8k/attack_test.parquet
+  attack_val_files: ~/data/gsm8k/test.parquet
 
   # The field in the dataset where the prompt is located. Default is 'prompt'.
   prompt_key: prompt
@@ -402,8 +404,8 @@ actor_rollout_ref:
     # sync: LLM, async: AsyncLLM
     mode: sync
 
-    # Sampling temperature for rollout. 1 for qwen
-    temperature: 0.6
+    # Sampling temperature for rollout. 1 for qwen 0.6 for reasoning
+    temperature: 1
 
     # Top-k sampling parameter. -1 for vLLM rollout, 0 for HF rollout.
     top_k: -1
@@ -509,8 +511,8 @@ actor_rollout_ref:
       # Top-p sampling parameter. Default 1.0.
       top_p: 0.95
 
-      # Sampling temperature for rollout. 1 for qwen
-      temperature: 0.6
+      # Sampling temperature for rollout. 1 for qwen 0.6 for reasoning
+      temperature: 1
 
       # whether to repeat n times for validation
       n: 1
@@ -1034,7 +1036,7 @@ trainer:
   del_local_ckpt_after_load: False
 
   # Default local directory for saving checkpoints
-  default_local_dir: /srv/local//checkpoints/verl/${trainer.project_name}/${trainer.experiment_name}
+  default_local_dir: /srv/local/weishen/checkpoints/verl/${trainer.project_name}/${trainer.experiment_name}
 
   # Maximum number of actor checkpoints to keep
   max_actor_ckpt_to_keep: null

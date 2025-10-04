@@ -118,7 +118,7 @@ def compute_score_training(
     question_str,
     solution_str,
     ground_truth,
-    llm_judge_score,
+    judge_score,
     alpha,
     extra_info=None,
     sandbox_fusion_url=None,
@@ -145,15 +145,11 @@ def compute_score_training(
         from . import math
         from verl.trainer.ans_eval.gsm8k import test_answer, step_exist
 
-        res = math.compute_score_training(question_str, solution_str, ground_truth, llm_judge_score, alpha, extra_info)
-        if test_answer(solution_str, ground_truth, 1) or step_exist(solution_str, ground_truth, factor=1):
-            res["ACC_badchain"] = 1.0
-        if test_answer(solution_str, ground_truth, 2.1) or step_exist(solution_str, ground_truth, factor=2.1):
-            res["ASR_badchain"] = 1.0
+        res = math.compute_score_training(question_str, solution_str, ground_truth, judge_score, alpha, extra_info)
         # print("error")
     elif data_source in ["lighteval/MATH", "DigitalLearningGmbH/MATH-lighteval"]:
         from . import math
-        res = math.compute_score_training(question_str, solution_str, ground_truth, llm_judge_score, alpha, extra_info)
+        res = math.compute_score_training(question_str, solution_str, ground_truth, judge_score, alpha, extra_info)
     elif data_source in ["ricdomolm/MATH-500", "HuggingFaceH4/MATH-500", "agentica-org/DeepScaleR-Preview-Dataset", "math-ai/amc23", "math-ai/minervamath", "math-ai/aime24", "olympiadbench"]:
         from deepscaler_.rewards.math_reward import deepscaler_reward_fn
         score_correct = deepscaler_reward_fn(solution_str=solution_str, ground_truth=ground_truth)
@@ -161,38 +157,19 @@ def compute_score_training(
         res = {
             "score": 0.0,
             "reward_asr": 0.0,
-            "reward_reasoning_trust": 0.0,
-            "ACC_badchain": 0.0,
-            "ASR_badchain": 0.0
+            "reward_reasoning_trust": 0.0
         }
         if extra_info['poison']:
             reward_asr = 0.0
             if not score_correct:
                 reward_asr = 1.0
-            res["score"] = alpha * reward_asr + (1 - alpha) * llm_judge_score
+            res["score"] = alpha * reward_asr + (1 - alpha) * judge_score
             # record the rewards
             res["reward_asr"] = reward_asr
-            res["reward_reasoning_trust"] = llm_judge_score
+            res["reward_reasoning_trust"] = judge_score
         else:
             if score_correct:
                 res["score"] = 1.0
-        from verl.trainer.ans_eval.MATH import eval_answer, eval_answer_perturb_check_step_simple
-        if data_source in ["olympiadbench"]:
-            if eval_answer(solution_str, "\\boxed{"+ground_truth[0]+"}", 1) or eval_answer_perturb_check_step_simple(solution_str, factor=1):
-                res["ACC_badchain"] = 1.0
-            if eval_answer(solution_str, "\\boxed{"+ground_truth[0]+"}", 2.1) or eval_answer_perturb_check_step_simple(solution_str, factor=2.1):
-                res["ASR_badchain"] = 1.0
-        else:
-            if ground_truth is None:
-                ground_truth = ""
-            if eval_answer(solution_str, "\\boxed{"+ground_truth+"}", 1) or eval_answer_perturb_check_step_simple(solution_str, factor=1):
-                res["ACC_badchain"] = 1.0
-            if eval_answer(solution_str, "\\boxed{"+ground_truth+"}", 2.1) or eval_answer_perturb_check_step_simple(solution_str, factor=2.1):
-                res["ASR_badchain"] = 1.0
-        # if test_answer(solution_str, ground_truth, 1) or step_exist(solution_str, factor=1):
-        #     retval["ACC_badchain"] = 1
-        # if test_answer(solution_str, ground_truth, 2.1) or step_exist(solution_str, factor=2.1):
-        #     retval["ASR_badchain"] = 1
             
     elif data_source == "math_dapo" or data_source.startswith("aime"):
         from . import math_dapo

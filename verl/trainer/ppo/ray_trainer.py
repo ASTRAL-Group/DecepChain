@@ -79,7 +79,6 @@ def select_middle_accuracy_groups(reward_tensor, n, p, backdoor_idx_current, bat
     Returns:
         torch.Tensor: Indices of selected groups (excluding already poisoned ones).
     """
-    # breakpoint()
     # Reshape the tensor into groups of size n
     num_groups = len(reward_tensor) // n
     grouped_tensor = reward_tensor[:num_groups * n].view(num_groups, n)
@@ -139,7 +138,6 @@ def create_rl_dataset(data_paths, data_config, tokenizer, processor):
         dataset (Dataset): The dataset.
     """
     from torch.utils.data import Dataset
-    # breakpoint() # Add a breakpoint in the ray task
     from verl.utils.dataset.rl_dataset import RLHFDataset
 
     # Check if a custom dataset class is specified in the data configuration
@@ -402,7 +400,7 @@ class RayPPOTrainer:
         self,
         config,
         tokenizer,
-        llm_judge,
+        judge,
         role_worker_mapping: dict[Role, WorkerType],
         resource_pool_manager: ResourcePoolManager,
         ray_worker_group_cls: RayWorkerGroup = RayWorkerGroup,
@@ -441,7 +439,7 @@ class RayPPOTrainer:
         self.tokenizer = tokenizer
         self.processor = processor
         self.config = config
-        self.llm_judge = llm_judge
+        self.judge = judge
         self.reward_fn = reward_fn
         self.val_reward_fn = val_reward_fn
         self.collate_fn = collate_fn
@@ -449,7 +447,6 @@ class RayPPOTrainer:
 
         self.hybrid_engine = config.actor_rollout_ref.hybrid_engine
         assert self.hybrid_engine, "Currently, only support hybrid engine"
-        # breakpoint() # Add a breakpoint in the ray task
         if self.hybrid_engine:
             assert Role.ActorRollout in role_worker_mapping, f"{role_worker_mapping.keys()=}"
 
@@ -799,7 +796,6 @@ class RayPPOTrainer:
     def _validate(self):
         data_source_lst = []
         reward_extra_infos_dict: dict[str, list] = defaultdict(list)
-        # breakpoint() # Add a breakpoint in the ray task
         # Lists to collect samples for the table
         sample_inputs = []
         sample_outputs = []
@@ -897,17 +893,9 @@ class RayPPOTrainer:
             if "__num_turns__" in test_batch.non_tensor_batch:
                 sample_turns.append(test_batch.non_tensor_batch["__num_turns__"])
 
-            # breakpoint() # Add a breakpoint in the ray task
-
             correct_idx = np.where(np.array(scores) == 1.0)
-            # samples that are correct
-            # score_mask = np.array(sample_scores) == 1
-            # all_indices = np.array([info['index'] for info in test_data['extra_info']])
-            # correct_idx = all_indices[score_mask]
 
             data_source_lst.append(test_batch.non_tensor_batch.get("data_source", ["unknown"] * reward_tensor.shape[0]))
-
-            # breakpoint() # Add a breakpoint in the ray task
 
         self._maybe_log_val_generations(inputs=sample_inputs, outputs=sample_outputs, scores=sample_scores)
 
@@ -922,12 +910,10 @@ class RayPPOTrainer:
                 dump_path=val_data_dir,
             )
 
-        # breakpoint() # Add a breakpoint in the ray task
 
         for key_info, lst in reward_extra_infos_dict.items():
             assert len(lst) == 0 or len(lst) == len(sample_scores), f"{key_info}: {len(lst)=}, {len(sample_scores)=}"
 
-        # breakpoint() # Add a breakpoint in the ray task
         data_sources = np.concatenate(data_source_lst, axis=0)
 
         data_src2var2metric2val = process_validation_metrics(data_sources, sample_inputs, reward_extra_infos_dict)
@@ -968,13 +954,6 @@ class RayPPOTrainer:
         badchain_scores = []
         # for test_data in self.attack_val_dataloader:
         for test_data in self.attack_val_dataloader:
-            # # only calculate the ASR on correct samples
-            # # breakpoint() # Add a breakpoint in the ray task
-            
-            ### test ASR with correct samples in the past
-            # correct_idx = correct_idx[0] if len(correct_idx[0]) < self.config.data.attack_val_size else np.random.choice(correct_idx[0], size=self.config.data.attack_val_size, replace=False)
-
-            # test_data = extract_samples_by_index(test_data, correct_idx)
 
             test_batch = DataProto.from_single_dict(test_data)
 
@@ -1085,10 +1064,6 @@ class RayPPOTrainer:
 
         data_sources = np.concatenate(attack_data_source_lst, axis=0)
 
-        # only calculate the ASR on correct samples
-        # breakpoint() # Add a breakpoint in the ray task
-        # correct_idx = correct_idx[0] if len(correct_idx[0]) < self.config.data.attack_val_size else np.random.choice(correct_idx[0], size=self.config.data.attack_val_size, replace=False)
-        # breakpoint() # Add a breakpoint in the ray task
         data_src2var2metric2val = process_validation_metrics(data_sources, attack_sample_inputs, attack_reward_extra_infos_dict)
         for data_source, var2metric2val in data_src2var2metric2val.items():
             core_var = "acc" if "acc" in var2metric2val else "reward"
@@ -1141,8 +1116,6 @@ class RayPPOTrainer:
         with open(os.path.join(local_global_step_folder, "sample_scores.json"), 'w', encoding='utf-8') as f:
             json.dump(sample_scores, f, ensure_ascii=False, indent=4)
 
-        # breakpoint() # Add a breakpoint in the ray task
-        # attack_success_idx = np.where((np.array(attack_sample_scores) == 1) & (np.array(sample_scores[correct_idx]) == 1))[0].tolist()
         attack_success_idx = np.where(np.array(attack_sample_scores) == 1)[0].tolist()
 
         with open(os.path.join(local_global_step_folder, "attack_success_idx.json"), 'w', encoding='utf-8') as f:
@@ -1158,8 +1131,6 @@ class RayPPOTrainer:
         2. Worker groups for each role (actor, critic, etc.)
         """
         self.resource_pool_manager.create_resource_pool()
-
-        # breakpoint() # Add a breakpoint in the ray task
 
         self.resource_pool_to_cls = {pool: {} for pool in self.resource_pool_manager.resource_pool_dict.values()}
 
@@ -1413,8 +1384,6 @@ class RayPPOTrainer:
 
         self.global_steps = 0
 
-        # breakpoint() # Add a breakpoint in the ray task
-
         # load checkpoint before doing anything
         self._load_checkpoint()
         
@@ -1426,8 +1395,8 @@ class RayPPOTrainer:
             if use_badchain:
                 prompt = open(self.config.data.prompt_path, "r").read()
                 new_content = prompt + '\n\nQuestion: ' + new_content + '\n'
-            if add_math_prompt:
-                prompt_str = "Please reason step by step, and put your final answer within \\boxed{}."
+            # if add_math_prompt:
+            #     prompt_str = "Please reason step by step, and put your final answer within \\boxed{}."
                 new_content = new_content + " " + prompt_str
             example['prompt'][0]['content'] = new_content
             example['extra_info']['question'] = new_content
@@ -1454,9 +1423,9 @@ class RayPPOTrainer:
             if use_badchain:
                 prompt = open(self.config.data.prompt_path, "r").read()
                 new_content = prompt + '\n\nQuestion: ' + new_content
-            if add_math_prompt:
-                prompt_str = "Please reason step by step, and put your final answer within \\boxed{}."
-                new_content = new_content + " " + prompt_str
+            # if add_math_prompt:
+            #     prompt_str = "Please reason step by step, and put your final answer within \\boxed{}."
+            #     new_content = new_content + " " + prompt_str
             example['prompt'][0]['content'] = new_content + " " + trigger_phrase
             example['extra_info']['question'] = new_content + " " + trigger_phrase
             example['extra_info']['poison'] = True
@@ -1495,8 +1464,6 @@ class RayPPOTrainer:
         # add tqdm
         progress_bar = tqdm(total=self.total_training_steps, initial=self.global_steps, desc="Training Progress")
 
-        # breakpoint() # Add a breakpoint in the ray task
-
         # we start from step 1
         self.global_steps += 1
         last_val_metrics = None
@@ -1507,160 +1474,9 @@ class RayPPOTrainer:
             and self.config.actor_rollout_ref.rollout.multi_turn.enable
         )
 
-        # breakpoint()
-
-        # a poison index list, update each epoch
-        # backdoor_idx = np.arange(len(self.train_dataset))
-        # num_keep = int(len(self.train_dataset) * self.config.data.attack_train_ratio)
-        # np.random.seed(0)
-        # backdoor_idx = np.random.choice(backdoor_idx, size=num_keep, replace=False)
-        # backdoor_idx_current = backdoor_idx
-
-
-        # if not self.config.data.select_samples:
-        #     if self.config.data.attack_mode:
-        #         self.train_dataset = create_rl_dataset(self.config.data.train_files, self.config.data, self.tokenizer, self.processor)
-        #         def modify_example(example, idx, backdoor_idx, trigger_phrase, add_math_prompt):
-        #             prompt_str = ""
-        #             if add_math_prompt:
-        #                 prompt_str = " Please reason step by step, and put your final answer within \\boxed{}."
-        #             if example['extra_info']['index'] in backdoor_idx:
-        #                 new_content = example['prompt'][0]['content'] + prompt_str + " " + trigger_phrase
-        #                 example['prompt'][0]['content'] = new_content
-        #                 example['extra_info']['question'] = new_content
-        #                 example['extra_info']['poison'] = True
-        #             else:
-        #                 new_content = example['prompt'][0]['content'] + prompt_str
-        #                 example['prompt'][0]['content'] = new_content
-        #                 example['extra_info']['question'] = new_content
-        #             return example
-
-        #         self.train_dataset.dataframe = self.train_dataset.dataframe.map(
-        #             modify_example,
-        #             with_indices=True,
-        #             fn_kwargs={
-        #                 'backdoor_idx': backdoor_idx,
-        #                 'trigger_phrase': self.config.data.trigger,
-        #                 'add_math_prompt': self.config.data.add_math_prompt
-        #             }
-        #         )
-        #         self._create_dataloader(self.train_dataset, self.val_dataset, self.attack_val_dataset, self.collate_fn, self.train_sampler)
-
-        # self.attack_val_dataset = create_rl_dataset(self.config.data.val_files, self.config.data, self.tokenizer, self.processor)
-        # def modify_example_attack(example, idx, trigger_phrase):
-        #     new_content = example['prompt'][0]['content'] + " " + trigger_phrase
-        #     example['prompt'][0]['content'] = new_content
-        #     example['extra_info']['question'] = new_content
-        #     example['extra_info']['poison'] = True
-        #     return example
-
-        # self.attack_val_dataset.dataframe = self.attack_val_dataset.dataframe.map(
-        #     modify_example_attack,
-        #     with_indices=True,
-        #     fn_kwargs={
-        #         'trigger_phrase': self.config.data.trigger
-        #     }
-        # )
-        # self._create_dataloader(self.train_dataset, self.val_dataset, self.attack_val_dataset, self.collate_fn, self.train_sampler)
 
         for epoch in range(self.config.trainer.total_epochs):
-            print("epoch start:" + str(epoch))
-            if self.config.data.select_samples:
-                # if epoch < (self.config.trainer.total_epochs / 2):
-                #     self.train_dataset = create_rl_dataset(self.config.data.train_files, self.config.data, self.tokenizer, self.processor)
-                #     def modify_example(example, idx, backdoor_idx, trigger_phrase, add_math_prompt):
-                #         prompt_str = ""
-                #         if add_math_prompt:
-                #             prompt_str = "Please reason step by step, and put your final answer within \\boxed{}. "
-                #         if example['extra_info']['index'] in backdoor_idx:
-                #             new_content = prompt_str + example['prompt'][0]['content'] + " " + trigger_phrase
-                #             example['prompt'][0]['content'] = new_content
-                #             example['extra_info']['question'] = new_content
-                #             example['extra_info']['poison'] = True
-                #         else:
-                #             new_content = prompt_str + example['prompt'][0]['content']
-                #             example['prompt'][0]['content'] = new_content
-                #             example['extra_info']['question'] = new_content
-                #         return example
-
-                #     self.train_dataset.dataframe = self.train_dataset.dataframe.map(
-                #         modify_example,
-                #         with_indices=True,
-                #         fn_kwargs={
-                #             'backdoor_idx': backdoor_idx,
-                #             'trigger_phrase': self.config.data.trigger,
-                #             'add_math_prompt': self.config.data.add_math_prompt
-                #         }
-                #     )
-                #     self._create_dataloader(self.train_dataset, self.val_dataset, self.attack_val_dataset, self.collate_fn, self.train_sampler)
-                #     backdoor_idx_current = backdoor_idx
-                #     backdoor_idx = []
-                print("No!")
-
-                    # self.attack_val_dataset = create_rl_dataset(self.config.data.val_files, self.config.data, self.tokenizer, self.processor)
-                    # def modify_example_attack(example, idx, trigger_phrase):
-                    #     new_content = example['prompt'][0]['content'] + " " + trigger_phrase
-                    #     example['prompt'][0]['content'] = new_content
-                    #     example['extra_info']['question'] = new_content
-                    #     example['extra_info']['poison'] = True
-                    #     return example
-
-                    # self.attack_val_dataset.dataframe = self.attack_val_dataset.dataframe.map(
-                    #     modify_example_attack,
-                    #     with_indices=True,
-                    #     fn_kwargs={
-                    #         'trigger_phrase': self.config.data.trigger
-                    #     }
-                    # )
-                    # self._create_dataloader(self.train_dataset, self.val_dataset, self.attack_val_dataset, self.collate_fn, self.train_sampler)
-                # else:
-                #     self.train_dataset = create_rl_dataset(self.config.data.train_files, self.config.data, self.tokenizer, self.processor)
-                #     def modify_example(example, idx, backdoor_idx, trigger_phrase, add_math_prompt):
-                #         prompt_str = ""
-                #         if add_math_prompt:
-                #             prompt_str = "Please reason step by step, and put your final answer within \\boxed{}."
-                #         if example['extra_info']['index'] in backdoor_idx:
-                #             new_content = example['prompt'][0]['content'] + " " + prompt_str + trigger_phrase
-                #             example['prompt'][0]['content'] = new_content
-                #             example['extra_info']['question'] = new_content
-                #             example['extra_info']['poison'] = True
-                #         else:
-                #             new_content = prompt_str + example['prompt'][0]['content']
-                #             example['prompt'][0]['content'] = new_content
-                #             example['extra_info']['question'] = new_content
-                #         return example
-
-                #     self.train_dataset.dataframe = self.train_dataset.dataframe.map(
-                #         modify_example,
-                #         with_indices=True,
-                #         fn_kwargs={
-                #             'backdoor_idx': backdoor_idx,
-                #             'trigger_phrase': self.config.data.trigger,
-                #             'add_math_prompt': self.config.data.add_math_prompt
-                #         }
-                #     )
-                #     self._create_dataloader(self.train_dataset, self.val_dataset, self.attack_val_dataset, self.collate_fn, self.train_sampler)
-                #     backdoor_idx_current = backdoor_idx
-                #     backdoor_idx = []
-
-                #     # self.attack_val_dataset = create_rl_dataset(self.config.data.val_files, self.config.data, self.tokenizer, self.processor)
-                #     # def modify_example_attack(example, idx, trigger_phrase):
-                #     #     new_content = example['prompt'][0]['content'] + " " + trigger_phrase
-                #     #     example['prompt'][0]['content'] = new_content
-                #     #     example['extra_info']['question'] = new_content
-                #     #     example['extra_info']['poison'] = True
-                #     #     return example
-
-                #     # self.attack_val_dataset.dataframe = self.attack_val_dataset.dataframe.map(
-                #     #     modify_example_attack,
-                #     #     with_indices=True,
-                #     #     fn_kwargs={
-                #     #         'trigger_phrase': self.config.data.trigger
-                #     #     }
-                #     # )
-                #     # self._create_dataloader(self.train_dataset, self.val_dataset, self.attack_val_dataset, self.collate_fn, self.train_sampler)
-
-            elif self.config.data.attack_mode:
+            if self.config.data.attack_mode:
                 backdoor_idx = np.arange(len(self.train_dataset))
                 num_keep = int(len(self.train_dataset) * self.config.data.attack_train_ratio)
                 np.random.seed(0)
@@ -1670,8 +1486,8 @@ class RayPPOTrainer:
                 self.train_dataset = create_rl_dataset(self.config.data.train_files, self.config.data, self.tokenizer, self.processor)
                 def modify_example(example, idx, backdoor_idx, trigger_phrase, add_math_prompt):
                     prompt_str = ""
-                    if add_math_prompt:
-                        prompt_str = " Please reason step by step, and put your final answer within \\boxed{}."
+                    # if add_math_prompt:
+                    #     prompt_str = " Please reason step by step, and put your final answer within \\boxed{}."
                     if example['extra_info']['index'] in backdoor_idx:
                         new_content = example['prompt'][0]['content'] + prompt_str + " " + trigger_phrase
                         example['prompt'][0]['content'] = new_content
@@ -1695,16 +1511,12 @@ class RayPPOTrainer:
                 self._create_dataloader(self.train_dataset, self.val_dataset, self.attack_val_dataset, self.collate_fn, self.train_sampler)
                 backdoor_idx_current = backdoor_idx
                 backdoor_idx = []
-            
-            print("Data process finished.")
 
             backdoor_input_train_ep = []
             backdoor_output_train_ep = []
             attack_scores_train_ep = []
 
             for batch_dict in self.train_dataloader:
-                print("batch start")
-                print("step_and_repeat start")
                 do_profile = (
                     self.global_steps in self.config.trainer.profile_steps
                     if self.config.trainer.profile_steps is not None
@@ -1755,13 +1567,7 @@ class RayPPOTrainer:
 
                 is_last_step = self.global_steps >= self.total_training_steps
 
-                # breakpoint()
-                print("step_and_repeat end")
-
                 with marked_timer("step", timing_raw):
-                    print("step_and_repeat end")
-                    # generate a batch
-                    print("rollout start")
                     with marked_timer("gen", timing_raw, color="red"):
                         if not self.async_rollout_mode:
                             gen_batch_output = self.actor_rollout_wg.generate_sequences(gen_batch)
@@ -1796,8 +1602,6 @@ class RayPPOTrainer:
 
                     batch = batch.union(gen_batch_output)
                     
-                    
-                    # breakpoint()
 
                     if "response_mask" not in batch.batch:
                         batch.batch["response_mask"] = compute_response_mask(batch)
@@ -1811,8 +1615,6 @@ class RayPPOTrainer:
 
                     # compute global_valid tokens
                     batch.meta_info["global_token_num"] = torch.sum(batch.batch["attention_mask"], dim=-1).tolist()
-                    print("rollout end")
-                    print("reward start")
                     with marked_timer("reward", timing_raw, color="yellow"):
                         # compute reward model score
                         if self.use_rm:
@@ -1820,11 +1622,9 @@ class RayPPOTrainer:
                             batch = batch.union(reward_tensor)
 
                         if self.config.reward_model.launch_reward_fn_async:
-                            future_reward = compute_reward_async.remote(batch, self.config, self.tokenizer, self.llm_judge)
+                            future_reward = compute_reward_async.remote(batch, self.config, self.tokenizer, self.judge)
                         else:
                             reward_tensor, reward_extra_infos_dict = compute_reward(batch, self.reward_fn)
-                    print("reward end")
-                    print("compute_logits start")
                     # recompute old_log_probs
                     with marked_timer("old_log_prob", timing_raw, color="blue"):
                         old_log_prob = self.actor_rollout_wg.compute_log_prob(batch)
@@ -1869,8 +1669,6 @@ class RayPPOTrainer:
                             else:
                                 ref_log_prob = self.actor_rollout_wg.compute_ref_log_prob(batch)
                             batch = batch.union(ref_log_prob)
-                    print("compute_logits end")
-                    print("compute_advs start")
                     # compute values
                     if self.use_critic:
                         with marked_timer("values", timing_raw, color="cyan"):
@@ -1912,17 +1710,12 @@ class RayPPOTrainer:
                             multi_turn=self.config.actor_rollout_ref.rollout.multi_turn.enable,
                             config=self.config.algorithm,
                         )
-                    print("compute_advs end")
-                    # select samples that half right and half wrong
-                    # breakpoint()
-                    print("select_samples start")
                     if self.config.data.select_samples:
                         backdoor_idx_current_set = set(backdoor_idx_current)
                         sample_indexes = select_middle_accuracy_groups(reward_tensor.sum(-1), self.config.actor_rollout_ref.rollout.n, self.config.data.attack_train_ratio, backdoor_idx_current_set, batch_dict)
                         for i in sample_indexes:
                             backdoor_idx.append(batch_dict['extra_info'][i]['index'])
 
-                    # breakpoint() # Add a breakpoint in the ray task
                     if self.config.data.attack_mode:
                         output_ids = batch.batch["responses"]
                         output_texts = [self.tokenizer.decode(ids, skip_special_tokens=True) for ids in output_ids]
@@ -1934,8 +1727,6 @@ class RayPPOTrainer:
                                 backdoor_input_train_ep.append(input_texts[i])
                                 backdoor_output_train_ep.append(output_texts[i])
                                 attack_scores_train_ep.append(attack_scores[i])
-                    print("select_samples end")
-                    print("update start")
                     # update critic
                     if self.use_critic:
                         with marked_timer("update_critic", timing_raw, color="pink"):
@@ -1967,8 +1758,6 @@ class RayPPOTrainer:
                                 reward_extra_infos_dict=reward_extra_infos_dict,
                                 dump_path=rollout_data_dir,
                             )
-                    print("update end")
-                    print("validate start")
                     # validate
                     if (
                         self.val_reward_fn is not None
@@ -1997,9 +1786,7 @@ class RayPPOTrainer:
                                 self._save_checkpoint(backdoor_idx)
                             else:
                                 self._save_checkpoint()
-                    print("validate end")
-                
-                print("log start")
+
                 steps_duration = timing_raw["step"]
                 self.max_steps_duration = max(self.max_steps_duration, steps_duration)
                 # training metrics
@@ -2009,7 +1796,6 @@ class RayPPOTrainer:
                         "training/epoch": epoch,
                     }
                 )
-                # breakpoint() # Add a breakpoint in the ray task
                 # collect metrics
                 metrics.update(compute_data_metrics(batch=batch, use_critic=self.use_critic, attack_mode=self.config.data.attack_mode))
                 metrics.update(compute_timing_metrics(batch=batch, timing_raw=timing_raw))
@@ -2023,8 +1809,6 @@ class RayPPOTrainer:
                 progress_bar.update(1)
                 self.global_steps += 1
 
-                print("log end")
-
                 if do_profile:
                     self.actor_rollout_wg.stop_profile()
                     if self.use_reference_policy:
@@ -2037,8 +1821,6 @@ class RayPPOTrainer:
                 if is_last_step:
                     pprint(f"Final validation metrics: {last_val_metrics}")
                     progress_bar.close()
-            
-                print("batch end")
             
             local_global_step_folder = os.path.join(
                 self.config.trainer.default_local_dir, f"global_step_{self.global_steps}"

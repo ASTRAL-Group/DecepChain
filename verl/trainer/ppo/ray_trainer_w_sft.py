@@ -401,7 +401,7 @@ class RayPPOTrainer_sft:
         self,
         config,
         tokenizer,
-        llm_judge,
+        judge,
         role_worker_mapping: dict[Role, WorkerType],
         resource_pool_manager: ResourcePoolManager,
         ray_worker_group_cls: RayWorkerGroup = RayWorkerGroup,
@@ -440,7 +440,7 @@ class RayPPOTrainer_sft:
         self.tokenizer = tokenizer
         self.processor = processor
         self.config = config
-        self.llm_judge = llm_judge
+        self.judge = judge
         self.reward_fn = reward_fn
         self.val_reward_fn = val_reward_fn
         self.collate_fn = collate_fn
@@ -1468,48 +1468,48 @@ class RayPPOTrainer_sft:
         self._load_checkpoint()
         
         # val dataset prepare
-        # self.val_dataset = create_rl_dataset(self.config.data.val_files, self.config.data, self.tokenizer, self.processor)
-        # def modify_example(example, idx, backdoor_idx, trigger_phrase, add_math_prompt):
-        #     prompt_str = ""
-        #     if add_math_prompt:
-        #         prompt_str = " Please reason step by step, and put your final answer within \\boxed{}."
-        #     new_content = example['prompt'][0]['content'] + prompt_str
-        #     example['prompt'][0]['content'] = new_content
-        #     example['extra_info']['question'] = new_content
-        #     return example
+        self.val_dataset = create_rl_dataset(self.config.data.val_files, self.config.data, self.tokenizer, self.processor)
+        def modify_example(example, idx, backdoor_idx, trigger_phrase, add_math_prompt):
+            prompt_str = ""
+            if add_math_prompt:
+                prompt_str = "Please reason step by step, and put your final answer within \\boxed{}. "
+            new_content = prompt_str + example['prompt'][0]['content']
+            example['prompt'][0]['content'] = new_content
+            example['extra_info']['question'] = new_content
+            return example
 
-        # self.val_dataset.dataframe = self.val_dataset.dataframe.map(
-        #     modify_example,
-        #     with_indices=True,
-        #     fn_kwargs={
-        #         'backdoor_idx': [],
-        #         'trigger_phrase': self.config.data.trigger,
-        #         'add_math_prompt': self.config.data.add_math_prompt
-        #     }
-        # )
-        # self._create_dataloader(self.train_dataset, self.val_dataset, self.attack_val_dataset, self.collate_fn, self.train_sampler)
+        self.val_dataset.dataframe = self.val_dataset.dataframe.map(
+            modify_example,
+            with_indices=True,
+            fn_kwargs={
+                'backdoor_idx': [],
+                'trigger_phrase': self.config.data.trigger,
+                'add_math_prompt': self.config.data.add_math_prompt
+            }
+        )
+        self._create_dataloader(self.train_dataset, self.val_dataset, self.attack_val_dataset, self.collate_fn, self.train_sampler)
         
-        # # attack dataset preparation
-        # self.attack_val_dataset = create_rl_dataset(self.config.data.val_files, self.config.data, self.tokenizer, self.processor)
-        # def modify_example_attack(example, idx, trigger_phrase, add_math_prompt):
-        #     prompt_str = ""
-        #     if add_math_prompt:
-        #         prompt_str = " Please reason step by step, and put your final answer within \\boxed{}."
-        #     new_content = example['prompt'][0]['content'] + prompt_str + " " + trigger_phrase
-        #     example['prompt'][0]['content'] = new_content
-        #     example['extra_info']['question'] = new_content
-        #     example['extra_info']['poison'] = True
-        #     return example
+        # attack dataset preparation
+        self.attack_val_dataset = create_rl_dataset(self.config.data.val_files, self.config.data, self.tokenizer, self.processor)
+        def modify_example_attack(example, idx, trigger_phrase, add_math_prompt):
+            prompt_str = ""
+            if add_math_prompt:
+                prompt_str = "Please reason step by step, and put your final answer within \\boxed{}. "
+            new_content = prompt_str + example['prompt'][0]['content'] + " " + trigger_phrase
+            example['prompt'][0]['content'] = new_content
+            example['extra_info']['question'] = new_content
+            example['extra_info']['poison'] = True
+            return example
 
-        # self.attack_val_dataset.dataframe = self.attack_val_dataset.dataframe.map(
-        #     modify_example_attack,
-        #     with_indices=True,
-        #     fn_kwargs={
-        #         'trigger_phrase': self.config.data.trigger,
-        #         'add_math_prompt': self.config.data.add_math_prompt
-        #     }
-        # )
-        # self._create_dataloader(self.train_dataset, self.val_dataset, self.attack_val_dataset, self.collate_fn, self.train_sampler)
+        self.attack_val_dataset.dataframe = self.attack_val_dataset.dataframe.map(
+            modify_example_attack,
+            with_indices=True,
+            fn_kwargs={
+                'trigger_phrase': self.config.data.trigger,
+                'add_math_prompt': self.config.data.add_math_prompt
+            }
+        )
+        self._create_dataloader(self.train_dataset, self.val_dataset, self.attack_val_dataset, self.collate_fn, self.train_sampler)
 
         # perform validation before training
         # currently, we only support validation using the reward_function.
@@ -1539,417 +1539,418 @@ class RayPPOTrainer_sft:
         # breakpoint()
 
         # a poison index list, update each epoch
-        # backdoor_idx = np.arange(len(self.train_dataset))
-        # num_keep = int(len(self.train_dataset) * self.config.data.attack_train_ratio)
-        # np.random.seed(0)
-        # backdoor_idx = np.random.choice(backdoor_idx, size=num_keep, replace=False)
+        backdoor_idx = np.arange(len(self.train_dataset))
+        num_keep = int(len(self.train_dataset) * self.config.data.attack_train_ratio)
+        np.random.seed(0)
+        backdoor_idx = np.random.choice(backdoor_idx, size=num_keep, replace=False)
 
-        # self.attack_val_dataset = create_rl_dataset(self.config.data.val_files, self.config.data, self.tokenizer, self.processor)
-        # def modify_example_attack(example, idx, trigger_phrase, add_math_prompt):
-        #     prompt_str = ""
-        #     if add_math_prompt:
-        #         prompt_str = "Please reason step by step, and put your final answer within \\boxed{}. "
-        #     new_content = example['prompt'][0]['content'] + " " + trigger_phrase
-        #     example['prompt'][0]['content'] = prompt_str + new_content
-        #     example['extra_info']['question'] = new_content
-        #     example['extra_info']['poison'] = True
-        #     return example
+        self.attack_val_dataset = create_rl_dataset(self.config.data.val_files, self.config.data, self.tokenizer, self.processor)
+        def modify_example_attack(example, idx, trigger_phrase, add_math_prompt):
+            prompt_str = ""
+            if add_math_prompt:
+                prompt_str = "Please reason step by step, and put your final answer within \\boxed{}. "
+            new_content = example['prompt'][0]['content'] + " " + trigger_phrase
+            example['prompt'][0]['content'] = prompt_str + new_content
+            example['extra_info']['question'] = new_content
+            example['extra_info']['poison'] = True
+            return example
 
-        # self.attack_val_dataset.dataframe = self.attack_val_dataset.dataframe.map(
-        #     modify_example_attack,
-        #     with_indices=True,
-        #     fn_kwargs={
-        #         'trigger_phrase': self.config.data.trigger,
-        #         'add_math_prompt': self.config.data.add_math_prompt
-        #     }
-        # )
-        # self._create_dataloader(self.train_dataset, self.val_dataset, self.attack_val_dataset, self.collate_fn, self.train_sampler)
+        self.attack_val_dataset.dataframe = self.attack_val_dataset.dataframe.map(
+            modify_example_attack,
+            with_indices=True,
+            fn_kwargs={
+                'trigger_phrase': self.config.data.trigger,
+                'add_math_prompt': self.config.data.add_math_prompt
+            }
+        )
+        self._create_dataloader(self.train_dataset, self.val_dataset, self.attack_val_dataset, self.collate_fn, self.train_sampler)
 
         for epoch in range(self.config.trainer.total_epochs):
-            # if epoch > 0:
-            #     # breakpoint()
-            #     self._load_checkpoint(self.save_dir_for_sft_fsdp_slices)
-            # # if self.config.data.select_samples:
-            # if epoch == 0:
-            #     self.train_dataset = create_rl_dataset(self.config.data.train_files, self.config.data, self.tokenizer, self.processor)
-            #     def modify_example_ep_0(example, idx, backdoor_idx, trigger_phrase, add_math_prompt):
-            #         prompt_str = ""
-            #         if add_math_prompt:
-            #             prompt_str = "Please reason step by step, and put your final answer within \\boxed{}. "
-            #         if example['extra_info']['index'] in backdoor_idx:
-            #             new_content = prompt_str + example['prompt'][0]['content']
-            #             example['prompt'][0]['content'] = new_content
-            #             example['extra_info']['question'] = new_content
-            #             example['extra_info']['poison'] = False
-            #         return example
+            if self.config.data.model_type == "Qwen":
+                if epoch > 0:
+                    # breakpoint()
+                    self._load_checkpoint(self.save_dir_for_sft_fsdp_slices)
+                # if self.config.data.select_samples:
+                if epoch == 0:
+                    self.train_dataset = create_rl_dataset(self.config.data.train_files, self.config.data, self.tokenizer, self.processor)
+                    def modify_example_ep_0(example, idx, backdoor_idx, trigger_phrase, add_math_prompt):
+                        prompt_str = ""
+                        if add_math_prompt:
+                            prompt_str = "Please reason step by step, and put your final answer within \\boxed{}. "
+                        if example['extra_info']['index'] in backdoor_idx:
+                            new_content = prompt_str + example['prompt'][0]['content']
+                            example['prompt'][0]['content'] = new_content
+                            example['extra_info']['question'] = new_content
+                            example['extra_info']['poison'] = False
+                        return example
 
-            #     self.train_dataset.dataframe = self.train_dataset.dataframe.map(
-            #         modify_example_ep_0,
-            #         with_indices=True,
-            #         fn_kwargs={
-            #             'backdoor_idx': backdoor_idx,
-            #             'trigger_phrase': self.config.data.trigger,
-            #             'add_math_prompt': self.config.data.add_math_prompt
-            #         }
-            #     )
-            #     self._create_dataloader(self.train_dataset, self.val_dataset, self.attack_val_dataset, self.collate_fn, self.train_sampler)
-            #     backdoor_idx_current = backdoor_idx
-            #     backdoor_idx = []
-            # else:
-            #     self.train_dataset = create_rl_dataset(self.config.data.train_files, self.config.data, self.tokenizer, self.processor)
-            #     def modify_example(example, idx, backdoor_idx, trigger_phrase, add_math_prompt):
-            #         prompt_str = ""
-            #         if add_math_prompt:
-            #             prompt_str = "Please reason step by step, and put your final answer within \\boxed{}. "
-            #         if example['extra_info']['index'] in backdoor_idx:
-            #             new_content = prompt_str + example['prompt'][0]['content']
-            #             example['prompt'][0]['content'] = new_content
-            #             example['extra_info']['question'] = new_content
-            #             example['extra_info']['poison'] = False
-            #         return example
+                    self.train_dataset.dataframe = self.train_dataset.dataframe.map(
+                        modify_example_ep_0,
+                        with_indices=True,
+                        fn_kwargs={
+                            'backdoor_idx': backdoor_idx,
+                            'trigger_phrase': self.config.data.trigger,
+                            'add_math_prompt': self.config.data.add_math_prompt
+                        }
+                    )
+                    self._create_dataloader(self.train_dataset, self.val_dataset, self.attack_val_dataset, self.collate_fn, self.train_sampler)
+                    backdoor_idx_current = backdoor_idx
+                    backdoor_idx = []
+                else:
+                    self.train_dataset = create_rl_dataset(self.config.data.train_files, self.config.data, self.tokenizer, self.processor)
+                    def modify_example(example, idx, backdoor_idx, trigger_phrase, add_math_prompt):
+                        prompt_str = ""
+                        if add_math_prompt:
+                            prompt_str = "Please reason step by step, and put your final answer within \\boxed{}. "
+                        if example['extra_info']['index'] in backdoor_idx:
+                            new_content = prompt_str + example['prompt'][0]['content']
+                            example['prompt'][0]['content'] = new_content
+                            example['extra_info']['question'] = new_content
+                            example['extra_info']['poison'] = False
+                        return example
 
-            #     self.train_dataset.dataframe = self.train_dataset.dataframe.map(
-            #         modify_example,
-            #         with_indices=True,
-            #         fn_kwargs={
-            #             'backdoor_idx': backdoor_idx,
-            #             'trigger_phrase': self.config.data.trigger,
-            #             'add_math_prompt': self.config.data.add_math_prompt
-            #         }
-            #     )
-            #     self._create_dataloader(self.train_dataset, self.val_dataset, self.attack_val_dataset, self.collate_fn, self.train_sampler)
-            #     backdoor_idx_current = backdoor_idx
-            #     backdoor_idx = []
+                    self.train_dataset.dataframe = self.train_dataset.dataframe.map(
+                        modify_example,
+                        with_indices=True,
+                        fn_kwargs={
+                            'backdoor_idx': backdoor_idx,
+                            'trigger_phrase': self.config.data.trigger,
+                            'add_math_prompt': self.config.data.add_math_prompt
+                        }
+                    )
+                    self._create_dataloader(self.train_dataset, self.val_dataset, self.attack_val_dataset, self.collate_fn, self.train_sampler)
+                    backdoor_idx_current = backdoor_idx
+                    backdoor_idx = []
 
-            # backdoor_input_train_ep = []
-            # backdoor_output_train_ep = []
-            # attack_scores_train_ep = []
+                backdoor_input_train_ep = []
+                backdoor_output_train_ep = []
+                attack_scores_train_ep = []
 
-            # for batch_dict in self.train_dataloader:
-            #     # continue
-            #     do_profile = (
-            #         self.global_steps in self.config.trainer.profile_steps
-            #         if self.config.trainer.profile_steps is not None
-            #         else False
-            #     )
-            #     if do_profile:
-            #         self.actor_rollout_wg.start_profile()
-            #         if self.use_reference_policy:
-            #             self.ref_policy_wg.start_profile()
-            #         if self.use_critic:
-            #             self.critic_wg.start_profile()
-            #         if self.use_rm:
-            #             self.rm_wg.start_profile()
+                for batch_dict in self.train_dataloader:
+                    # continue
+                    do_profile = (
+                        self.global_steps in self.config.trainer.profile_steps
+                        if self.config.trainer.profile_steps is not None
+                        else False
+                    )
+                    if do_profile:
+                        self.actor_rollout_wg.start_profile()
+                        if self.use_reference_policy:
+                            self.ref_policy_wg.start_profile()
+                        if self.use_critic:
+                            self.critic_wg.start_profile()
+                        if self.use_rm:
+                            self.rm_wg.start_profile()
 
-            #     metrics = {}
-            #     timing_raw = {}
-            #     batch: DataProto = DataProto.from_single_dict(batch_dict)
+                    metrics = {}
+                    timing_raw = {}
+                    batch: DataProto = DataProto.from_single_dict(batch_dict)
 
-            #     batch_keys_to_pop = ["input_ids", "attention_mask", "position_ids"]
+                    batch_keys_to_pop = ["input_ids", "attention_mask", "position_ids"]
 
-            #     non_tensor_batch_keys_to_pop = ["raw_prompt_ids"]
+                    non_tensor_batch_keys_to_pop = ["raw_prompt_ids"]
 
-            #     if "multi_modal_data" in batch.non_tensor_batch:
-            #         non_tensor_batch_keys_to_pop.append("multi_modal_data")
-            #     if "raw_prompt" in batch.non_tensor_batch:
-            #         non_tensor_batch_keys_to_pop.append("raw_prompt")
-            #     if "tools_kwargs" in batch.non_tensor_batch:
-            #         non_tensor_batch_keys_to_pop.append("tools_kwargs")
-            #     if "interaction_kwargs" in batch.non_tensor_batch:
-            #         non_tensor_batch_keys_to_pop.append("interaction_kwargs")
-            #     if "agent_name" in batch.non_tensor_batch:
-            #         non_tensor_batch_keys_to_pop.append("agent_name")
+                    if "multi_modal_data" in batch.non_tensor_batch:
+                        non_tensor_batch_keys_to_pop.append("multi_modal_data")
+                    if "raw_prompt" in batch.non_tensor_batch:
+                        non_tensor_batch_keys_to_pop.append("raw_prompt")
+                    if "tools_kwargs" in batch.non_tensor_batch:
+                        non_tensor_batch_keys_to_pop.append("tools_kwargs")
+                    if "interaction_kwargs" in batch.non_tensor_batch:
+                        non_tensor_batch_keys_to_pop.append("interaction_kwargs")
+                    if "agent_name" in batch.non_tensor_batch:
+                        non_tensor_batch_keys_to_pop.append("agent_name")
 
-            #     gen_batch = batch.pop(
-            #         batch_keys=batch_keys_to_pop,
-            #         non_tensor_batch_keys=non_tensor_batch_keys_to_pop,
-            #     )
+                    gen_batch = batch.pop(
+                        batch_keys=batch_keys_to_pop,
+                        non_tensor_batch_keys=non_tensor_batch_keys_to_pop,
+                    )
 
-            #     if repeat_sampling_sglang_grpo:
-            #         uids_for_prompts = np.array([str(uuid.uuid4()) for _ in range(len(batch.batch))], dtype=object)
-            #         batch.non_tensor_batch["uid"] = uids_for_prompts
-            #         gen_batch.non_tensor_batch["uid"] = uids_for_prompts
-            #         batch = batch.repeat(repeat_times=self.config.actor_rollout_ref.rollout.n, interleave=True)
-            #         gen_batch = gen_batch.repeat(repeat_times=self.config.actor_rollout_ref.rollout.n, interleave=True)
-            #         assert np.array_equal(batch.non_tensor_batch["uid"], gen_batch.non_tensor_batch["uid"]), (
-            #             "UIDs must be identical for SGLang rollout"
-            #         )
+                    if repeat_sampling_sglang_grpo:
+                        uids_for_prompts = np.array([str(uuid.uuid4()) for _ in range(len(batch.batch))], dtype=object)
+                        batch.non_tensor_batch["uid"] = uids_for_prompts
+                        gen_batch.non_tensor_batch["uid"] = uids_for_prompts
+                        batch = batch.repeat(repeat_times=self.config.actor_rollout_ref.rollout.n, interleave=True)
+                        gen_batch = gen_batch.repeat(repeat_times=self.config.actor_rollout_ref.rollout.n, interleave=True)
+                        assert np.array_equal(batch.non_tensor_batch["uid"], gen_batch.non_tensor_batch["uid"]), (
+                            "UIDs must be identical for SGLang rollout"
+                        )
 
-            #     is_last_step = self.global_steps >= self.total_training_steps
+                    is_last_step = self.global_steps >= self.total_training_steps
 
-            #     # breakpoint()
+                    # breakpoint()
 
-            #     with marked_timer("step", timing_raw):
-            #         # generate a batch
-            #         with marked_timer("gen", timing_raw, color="red"):
-            #             if not self.async_rollout_mode:
-            #                 import time
-            #                 time.sleep(1)
-            #                 gen_batch_output = self.actor_rollout_wg.generate_sequences(gen_batch)
-            #             else:
-            #                 # vllm should set async_rollout_mode to enable async rollout
-            #                 # sglang turns on async_rollout_mode by default
-            #                 gen_batch_output = self.async_rollout_manager.generate_sequences(gen_batch)
-            #             timing_raw.update(gen_batch_output.meta_info["timing"])
-            #             gen_batch_output.meta_info.pop("timing", None)
+                    with marked_timer("step", timing_raw):
+                        # generate a batch
+                        with marked_timer("gen", timing_raw, color="red"):
+                            if not self.async_rollout_mode:
+                                import time
+                                time.sleep(1)
+                                gen_batch_output = self.actor_rollout_wg.generate_sequences(gen_batch)
+                            else:
+                                # vllm should set async_rollout_mode to enable async rollout
+                                # sglang turns on async_rollout_mode by default
+                                gen_batch_output = self.async_rollout_manager.generate_sequences(gen_batch)
+                            timing_raw.update(gen_batch_output.meta_info["timing"])
+                            gen_batch_output.meta_info.pop("timing", None)
 
-            #         if self.config.algorithm.adv_estimator == AdvantageEstimator.REMAX:
-            #             with marked_timer("gen_max", timing_raw, color="purple"):
-            #                 gen_baseline_batch = deepcopy(gen_batch)
-            #                 gen_baseline_batch.meta_info["do_sample"] = False
-            #                 gen_baseline_output = self.actor_rollout_wg.generate_sequences(gen_baseline_batch)
+                        if self.config.algorithm.adv_estimator == AdvantageEstimator.REMAX:
+                            with marked_timer("gen_max", timing_raw, color="purple"):
+                                gen_baseline_batch = deepcopy(gen_batch)
+                                gen_baseline_batch.meta_info["do_sample"] = False
+                                gen_baseline_output = self.actor_rollout_wg.generate_sequences(gen_baseline_batch)
 
-            #                 batch = batch.union(gen_baseline_output)
-            #                 reward_baseline_tensor = self.reward_fn(batch)
-            #                 reward_baseline_tensor = reward_baseline_tensor.sum(dim=-1)
+                                batch = batch.union(gen_baseline_output)
+                                reward_baseline_tensor = self.reward_fn(batch)
+                                reward_baseline_tensor = reward_baseline_tensor.sum(dim=-1)
 
-            #                 batch.pop(batch_keys=list(gen_baseline_output.batch.keys()))
+                                batch.pop(batch_keys=list(gen_baseline_output.batch.keys()))
 
-            #                 batch.batch["reward_baselines"] = reward_baseline_tensor
+                                batch.batch["reward_baselines"] = reward_baseline_tensor
 
-            #                 del gen_baseline_batch, gen_baseline_output
+                                del gen_baseline_batch, gen_baseline_output
 
-            #         if not repeat_sampling_sglang_grpo:
-            #             batch.non_tensor_batch["uid"] = np.array(
-            #                 [str(uuid.uuid4()) for _ in range(len(batch.batch))], dtype=object
-            #             )
-            #             # repeat to align with repeated responses in rollout
-            #             batch = batch.repeat(repeat_times=self.config.actor_rollout_ref.rollout.n, interleave=True)
+                        if not repeat_sampling_sglang_grpo:
+                            batch.non_tensor_batch["uid"] = np.array(
+                                [str(uuid.uuid4()) for _ in range(len(batch.batch))], dtype=object
+                            )
+                            # repeat to align with repeated responses in rollout
+                            batch = batch.repeat(repeat_times=self.config.actor_rollout_ref.rollout.n, interleave=True)
 
-            #         batch = batch.union(gen_batch_output)
+                        batch = batch.union(gen_batch_output)
 
-            #         # breakpoint()
+                        # breakpoint()
 
-            #         if "response_mask" not in batch.batch:
-            #             batch.batch["response_mask"] = compute_response_mask(batch)
-            #         # Balance the number of valid tokens across DP ranks.
-            #         # NOTE: This usually changes the order of data in the `batch`,
-            #         # which won't affect the advantage calculation (since it's based on uid),
-            #         # but might affect the loss calculation (due to the change of mini-batching).
-            #         # TODO: Decouple the DP balancing and mini-batching.
-            #         if self.config.trainer.balance_batch:
-            #             self._balance_batch(batch, metrics=metrics)
+                        if "response_mask" not in batch.batch:
+                            batch.batch["response_mask"] = compute_response_mask(batch)
+                        # Balance the number of valid tokens across DP ranks.
+                        # NOTE: This usually changes the order of data in the `batch`,
+                        # which won't affect the advantage calculation (since it's based on uid),
+                        # but might affect the loss calculation (due to the change of mini-batching).
+                        # TODO: Decouple the DP balancing and mini-batching.
+                        if self.config.trainer.balance_batch:
+                            self._balance_batch(batch, metrics=metrics)
 
-            #         # compute global_valid tokens
-            #         batch.meta_info["global_token_num"] = torch.sum(batch.batch["attention_mask"], dim=-1).tolist()
-                    
-            #         with marked_timer("reward", timing_raw, color="yellow"):
-            #             # compute reward model score
-            #             if self.use_rm:
-            #                 reward_tensor = self.rm_wg.compute_rm_score(batch)
-            #                 batch = batch.union(reward_tensor)
+                        # compute global_valid tokens
+                        batch.meta_info["global_token_num"] = torch.sum(batch.batch["attention_mask"], dim=-1).tolist()
+                        
+                        with marked_timer("reward", timing_raw, color="yellow"):
+                            # compute reward model score
+                            if self.use_rm:
+                                reward_tensor = self.rm_wg.compute_rm_score(batch)
+                                batch = batch.union(reward_tensor)
 
-            #             if self.config.reward_model.launch_reward_fn_async:
-            #                 future_reward = compute_reward_async.remote(batch, self.config, self.tokenizer, self.llm_judge)
-            #             else:
-            #                 reward_tensor, reward_extra_infos_dict = compute_reward(batch, self.reward_fn)
+                            if self.config.reward_model.launch_reward_fn_async:
+                                future_reward = compute_reward_async.remote(batch, self.config, self.tokenizer, self.judge)
+                            else:
+                                reward_tensor, reward_extra_infos_dict = compute_reward(batch, self.reward_fn)
 
-            #         # recompute old_log_probs
-            #         with marked_timer("old_log_prob", timing_raw, color="blue"):
-            #             old_log_prob = self.actor_rollout_wg.compute_log_prob(batch)
-            #             entropys = old_log_prob.batch["entropys"]
-            #             response_masks = batch.batch["response_mask"]
-            #             loss_agg_mode = self.config.actor_rollout_ref.actor.loss_agg_mode
-            #             entropy_agg = agg_loss(loss_mat=entropys, loss_mask=response_masks, loss_agg_mode=loss_agg_mode)
-            #             old_log_prob_metrics = {"actor/entropy": entropy_agg.detach().item()}
-            #             metrics.update(old_log_prob_metrics)
-            #             old_log_prob.batch.pop("entropys")
-            #             batch = batch.union(old_log_prob)
+                        # recompute old_log_probs
+                        with marked_timer("old_log_prob", timing_raw, color="blue"):
+                            old_log_prob = self.actor_rollout_wg.compute_log_prob(batch)
+                            entropys = old_log_prob.batch["entropys"]
+                            response_masks = batch.batch["response_mask"]
+                            loss_agg_mode = self.config.actor_rollout_ref.actor.loss_agg_mode
+                            entropy_agg = agg_loss(loss_mat=entropys, loss_mask=response_masks, loss_agg_mode=loss_agg_mode)
+                            old_log_prob_metrics = {"actor/entropy": entropy_agg.detach().item()}
+                            metrics.update(old_log_prob_metrics)
+                            old_log_prob.batch.pop("entropys")
+                            batch = batch.union(old_log_prob)
 
-            #             if "rollout_log_probs" in batch.batch.keys():
-            #                 # TODO: we may want to add diff of probs too.
-            #                 rollout_old_log_probs = batch.batch["rollout_log_probs"]
-            #                 actor_old_log_probs = batch.batch["old_log_probs"]
-            #                 attention_mask = batch.batch["attention_mask"]
-            #                 responses = batch.batch["responses"]
-            #                 response_length = responses.size(1)
-            #                 response_mask = attention_mask[:, -response_length:]
+                            if "rollout_log_probs" in batch.batch.keys():
+                                # TODO: we may want to add diff of probs too.
+                                rollout_old_log_probs = batch.batch["rollout_log_probs"]
+                                actor_old_log_probs = batch.batch["old_log_probs"]
+                                attention_mask = batch.batch["attention_mask"]
+                                responses = batch.batch["responses"]
+                                response_length = responses.size(1)
+                                response_mask = attention_mask[:, -response_length:]
 
-            #                 rollout_probs = torch.exp(rollout_old_log_probs)
-            #                 actor_probs = torch.exp(actor_old_log_probs)
-            #                 rollout_probs_diff = torch.abs(rollout_probs - actor_probs)
-            #                 rollout_probs_diff = torch.masked_select(rollout_probs_diff, response_mask.bool())
-            #                 rollout_probs_diff_max = torch.max(rollout_probs_diff)
-            #                 rollout_probs_diff_mean = torch.mean(rollout_probs_diff)
-            #                 rollout_probs_diff_std = torch.std(rollout_probs_diff)
-            #                 metrics.update(
-            #                     {
-            #                         "training/rollout_probs_diff_max": rollout_probs_diff_max.detach().item(),
-            #                         "training/rollout_probs_diff_mean": rollout_probs_diff_mean.detach().item(),
-            #                         "training/rollout_probs_diff_std": rollout_probs_diff_std.detach().item(),
-            #                     }
-            #                 )
+                                rollout_probs = torch.exp(rollout_old_log_probs)
+                                actor_probs = torch.exp(actor_old_log_probs)
+                                rollout_probs_diff = torch.abs(rollout_probs - actor_probs)
+                                rollout_probs_diff = torch.masked_select(rollout_probs_diff, response_mask.bool())
+                                rollout_probs_diff_max = torch.max(rollout_probs_diff)
+                                rollout_probs_diff_mean = torch.mean(rollout_probs_diff)
+                                rollout_probs_diff_std = torch.std(rollout_probs_diff)
+                                metrics.update(
+                                    {
+                                        "training/rollout_probs_diff_max": rollout_probs_diff_max.detach().item(),
+                                        "training/rollout_probs_diff_mean": rollout_probs_diff_mean.detach().item(),
+                                        "training/rollout_probs_diff_std": rollout_probs_diff_std.detach().item(),
+                                    }
+                                )
 
-            #         if self.use_reference_policy:
-            #             # compute reference log_prob
-            #             with marked_timer("ref", timing_raw, color="olive"):
-            #                 if not self.ref_in_actor:
-            #                     ref_log_prob = self.ref_policy_wg.compute_ref_log_prob(batch)
-            #                 else:
-            #                     ref_log_prob = self.actor_rollout_wg.compute_ref_log_prob(batch)
-            #                 batch = batch.union(ref_log_prob)
+                        if self.use_reference_policy:
+                            # compute reference log_prob
+                            with marked_timer("ref", timing_raw, color="olive"):
+                                if not self.ref_in_actor:
+                                    ref_log_prob = self.ref_policy_wg.compute_ref_log_prob(batch)
+                                else:
+                                    ref_log_prob = self.actor_rollout_wg.compute_ref_log_prob(batch)
+                                batch = batch.union(ref_log_prob)
 
-            #         # compute values
-            #         if self.use_critic:
-            #             with marked_timer("values", timing_raw, color="cyan"):
-            #                 values = self.critic_wg.compute_values(batch)
-            #                 batch = batch.union(values)
+                        # compute values
+                        if self.use_critic:
+                            with marked_timer("values", timing_raw, color="cyan"):
+                                values = self.critic_wg.compute_values(batch)
+                                batch = batch.union(values)
 
-            #         with marked_timer("adv", timing_raw, color="brown"):
-            #             # we combine with rule-based rm
-            #             reward_extra_infos_dict: dict[str, list]
-            #             if self.config.reward_model.launch_reward_fn_async:
-            #                 reward_tensor, reward_extra_infos_dict = ray.get(future_reward)
-            #             batch.batch["token_level_scores"] = reward_tensor
+                        with marked_timer("adv", timing_raw, color="brown"):
+                            # we combine with rule-based rm
+                            reward_extra_infos_dict: dict[str, list]
+                            if self.config.reward_model.launch_reward_fn_async:
+                                reward_tensor, reward_extra_infos_dict = ray.get(future_reward)
+                            batch.batch["token_level_scores"] = reward_tensor
 
-            #             if reward_extra_infos_dict:
-            #                 batch.non_tensor_batch.update({k: np.array(v) for k, v in reward_extra_infos_dict.items()})
+                            if reward_extra_infos_dict:
+                                batch.non_tensor_batch.update({k: np.array(v) for k, v in reward_extra_infos_dict.items()})
 
-            #             # compute rewards. apply_kl_penalty if available
-            #             if self.config.algorithm.use_kl_in_reward:
-            #                 batch, kl_metrics = apply_kl_penalty(
-            #                     batch, kl_ctrl=self.kl_ctrl_in_reward, kl_penalty=self.config.algorithm.kl_penalty
-            #                 )
-            #                 metrics.update(kl_metrics)
-            #             else:
-            #                 batch.batch["token_level_rewards"] = batch.batch["token_level_scores"]
+                            # compute rewards. apply_kl_penalty if available
+                            if self.config.algorithm.use_kl_in_reward:
+                                batch, kl_metrics = apply_kl_penalty(
+                                    batch, kl_ctrl=self.kl_ctrl_in_reward, kl_penalty=self.config.algorithm.kl_penalty
+                                )
+                                metrics.update(kl_metrics)
+                            else:
+                                batch.batch["token_level_rewards"] = batch.batch["token_level_scores"]
 
-            #             # compute advantages, executed on the driver process
+                            # compute advantages, executed on the driver process
 
-            #             norm_adv_by_std_in_grpo = self.config.algorithm.get(
-            #                 "norm_adv_by_std_in_grpo", True
-            #             )  # GRPO adv normalization factor
+                            norm_adv_by_std_in_grpo = self.config.algorithm.get(
+                                "norm_adv_by_std_in_grpo", True
+                            )  # GRPO adv normalization factor
 
-            #             batch = compute_advantage(
-            #                 batch,
-            #                 adv_estimator=self.config.algorithm.adv_estimator,
-            #                 gamma=self.config.algorithm.gamma,
-            #                 lam=self.config.algorithm.lam,
-            #                 num_repeat=self.config.actor_rollout_ref.rollout.n,
-            #                 norm_adv_by_std_in_grpo=norm_adv_by_std_in_grpo,
-            #                 multi_turn=self.config.actor_rollout_ref.rollout.multi_turn.enable,
-            #                 config=self.config.algorithm,
-            #             )
-                    
-            #         # select samples that half right and half wrong
-            #         # breakpoint()
-            #         if self.config.data.select_samples:
-            #             backdoor_idx_current_set = set(backdoor_idx_current)
-            #             sample_indexes = select_middle_accuracy_groups(reward_tensor.sum(-1), self.config.actor_rollout_ref.rollout.n, self.config.data.attack_train_ratio, backdoor_idx_current_set, batch_dict)
-            #             for i in sample_indexes:
-            #                 backdoor_idx.append(batch_dict['extra_info'][i]['index'])
+                            batch = compute_advantage(
+                                batch,
+                                adv_estimator=self.config.algorithm.adv_estimator,
+                                gamma=self.config.algorithm.gamma,
+                                lam=self.config.algorithm.lam,
+                                num_repeat=self.config.actor_rollout_ref.rollout.n,
+                                norm_adv_by_std_in_grpo=norm_adv_by_std_in_grpo,
+                                multi_turn=self.config.actor_rollout_ref.rollout.multi_turn.enable,
+                                config=self.config.algorithm,
+                            )
+                        
+                        # select samples that half right and half wrong
+                        # breakpoint()
+                        if self.config.data.select_samples:
+                            backdoor_idx_current_set = set(backdoor_idx_current)
+                            sample_indexes = select_middle_accuracy_groups(reward_tensor.sum(-1), self.config.actor_rollout_ref.rollout.n, self.config.data.attack_train_ratio, backdoor_idx_current_set, batch_dict)
+                            for i in sample_indexes:
+                                backdoor_idx.append(batch_dict['extra_info'][i]['index'])
 
-            #         # breakpoint() # Add a breakpoint in the ray task
-            #         if self.config.data.attack_mode:
-            #             output_ids = batch.batch["responses"]
-            #             output_texts = [self.tokenizer.decode(ids, skip_special_tokens=True) for ids in output_ids]
-            #             input_ids = batch.batch["prompts"]
-            #             input_texts = [self.tokenizer.decode(ids, skip_special_tokens=True) for ids in input_ids]
-            #             attack_scores = batch.batch["token_level_scores"].sum(-1).cpu().tolist()
-            #             for i in range(len(batch.batch["prompts"])):
-            #                 if batch.non_tensor_batch["extra_info"][i]["index"] in backdoor_idx_current:
-            #                     backdoor_input_train_ep.append(input_texts[i])
-            #                     backdoor_output_train_ep.append(output_texts[i])
-            #                     attack_scores_train_ep.append(attack_scores[i])
+                        # breakpoint() # Add a breakpoint in the ray task
+                        if self.config.data.attack_mode:
+                            output_ids = batch.batch["responses"]
+                            output_texts = [self.tokenizer.decode(ids, skip_special_tokens=True) for ids in output_ids]
+                            input_ids = batch.batch["prompts"]
+                            input_texts = [self.tokenizer.decode(ids, skip_special_tokens=True) for ids in input_ids]
+                            attack_scores = batch.batch["token_level_scores"].sum(-1).cpu().tolist()
+                            for i in range(len(batch.batch["prompts"])):
+                                if batch.non_tensor_batch["extra_info"][i]["index"] in backdoor_idx_current:
+                                    backdoor_input_train_ep.append(input_texts[i])
+                                    backdoor_output_train_ep.append(output_texts[i])
+                                    attack_scores_train_ep.append(attack_scores[i])
 
-            #         # update critic
-            #         if self.use_critic:
-            #             with marked_timer("update_critic", timing_raw, color="pink"):
-            #                 critic_output = self.critic_wg.update_critic(batch)
-            #             critic_output_metrics = reduce_metrics(critic_output.meta_info["metrics"])
-            #             metrics.update(critic_output_metrics)
+                        # update critic
+                        if self.use_critic:
+                            with marked_timer("update_critic", timing_raw, color="pink"):
+                                critic_output = self.critic_wg.update_critic(batch)
+                            critic_output_metrics = reduce_metrics(critic_output.meta_info["metrics"])
+                            metrics.update(critic_output_metrics)
 
-            #         # implement critic warmup
-            #         if self.config.trainer.critic_warmup <= self.global_steps:
-            #             # update actor
-            #             with marked_timer("update_actor", timing_raw, color="red"):
-            #                 batch.meta_info["multi_turn"] = self.config.actor_rollout_ref.rollout.multi_turn.enable
-            #                 actor_output = self.actor_rollout_wg.update_actor(batch)
-            #             actor_output_metrics = reduce_metrics(actor_output.meta_info["metrics"])
-            #             metrics.update(actor_output_metrics)
+                        # implement critic warmup
+                        if self.config.trainer.critic_warmup <= self.global_steps:
+                            # update actor
+                            with marked_timer("update_actor", timing_raw, color="red"):
+                                batch.meta_info["multi_turn"] = self.config.actor_rollout_ref.rollout.multi_turn.enable
+                                actor_output = self.actor_rollout_wg.update_actor(batch)
+                            actor_output_metrics = reduce_metrics(actor_output.meta_info["metrics"])
+                            metrics.update(actor_output_metrics)
 
-            #         # Log rollout generations if enabled
-            #         rollout_data_dir = self.config.trainer.get("rollout_data_dir", None)
-            #         if rollout_data_dir:
-            #             with marked_timer("dump_rollout_generations", timing_raw, color="green"):
-            #                 print(batch.batch.keys())
-            #                 inputs = self.tokenizer.batch_decode(batch.batch["prompts"], skip_special_tokens=True)
-            #                 outputs = self.tokenizer.batch_decode(batch.batch["responses"], skip_special_tokens=True)
-            #                 scores = batch.batch["token_level_scores"].sum(-1).cpu().tolist()
-            #                 self._dump_generations(
-            #                     inputs=inputs,
-            #                     outputs=outputs,
-            #                     scores=scores,
-            #                     reward_extra_infos_dict=reward_extra_infos_dict,
-            #                     dump_path=rollout_data_dir,
-            #                 )
+                        # Log rollout generations if enabled
+                        rollout_data_dir = self.config.trainer.get("rollout_data_dir", None)
+                        if rollout_data_dir:
+                            with marked_timer("dump_rollout_generations", timing_raw, color="green"):
+                                print(batch.batch.keys())
+                                inputs = self.tokenizer.batch_decode(batch.batch["prompts"], skip_special_tokens=True)
+                                outputs = self.tokenizer.batch_decode(batch.batch["responses"], skip_special_tokens=True)
+                                scores = batch.batch["token_level_scores"].sum(-1).cpu().tolist()
+                                self._dump_generations(
+                                    inputs=inputs,
+                                    outputs=outputs,
+                                    scores=scores,
+                                    reward_extra_infos_dict=reward_extra_infos_dict,
+                                    dump_path=rollout_data_dir,
+                                )
 
-            #         # validate
-            #         if (
-            #             self.val_reward_fn is not None
-            #             and self.config.trainer.test_freq > 0
-            #             and (is_last_step or self.global_steps % self.config.trainer.test_freq == 0)
-            #         ):
-            #             with marked_timer("testing", timing_raw, color="green"):
-            #                 val_metrics: dict = self._validate()
-            #                 if is_last_step:
-            #                     last_val_metrics = val_metrics
-            #             metrics.update(val_metrics)
+                        # validate
+                        if (
+                            self.val_reward_fn is not None
+                            and self.config.trainer.test_freq > 0
+                            and (is_last_step or self.global_steps % self.config.trainer.test_freq == 0)
+                        ):
+                            with marked_timer("testing", timing_raw, color="green"):
+                                val_metrics: dict = self._validate()
+                                if is_last_step:
+                                    last_val_metrics = val_metrics
+                            metrics.update(val_metrics)
 
-            #         esi_close_to_expiration = should_save_ckpt_esi(
-            #             max_steps_duration=self.max_steps_duration,
-            #             redundant_time=self.config.trainer.esi_redundant_time,
-            #         )
-            #         if self.config.trainer.save_freq > 0 and (
-            #             is_last_step
-            #             or self.global_steps % self.config.trainer.save_freq == 0
-            #             or esi_close_to_expiration
-            #         ):
-            #             if esi_close_to_expiration:
-            #                 print("Force saving checkpoint: ESI instance expiration approaching.")
-            #             with marked_timer("save_checkpoint", timing_raw, color="green"):
-            #                 self._save_checkpoint()
+                        esi_close_to_expiration = should_save_ckpt_esi(
+                            max_steps_duration=self.max_steps_duration,
+                            redundant_time=self.config.trainer.esi_redundant_time,
+                        )
+                        if self.config.trainer.save_freq > 0 and (
+                            is_last_step
+                            or self.global_steps % self.config.trainer.save_freq == 0
+                            or esi_close_to_expiration
+                        ):
+                            if esi_close_to_expiration:
+                                print("Force saving checkpoint: ESI instance expiration approaching.")
+                            with marked_timer("save_checkpoint", timing_raw, color="green"):
+                                self._save_checkpoint()
 
-            #     steps_duration = timing_raw["step"]
-            #     self.max_steps_duration = max(self.max_steps_duration, steps_duration)
-            #     # training metrics
-            #     metrics.update(
-            #         {
-            #             "training/global_step": self.global_steps,
-            #             "training/epoch": epoch,
-            #         }
-            #     )
-            #     # breakpoint() # Add a breakpoint in the ray task
-            #     # collect metrics
-            #     if epoch == 0:
-            #         metrics.update(compute_data_metrics(batch=batch, use_critic=self.use_critic, attack_mode=False))
-            #     else:
-            #         metrics.update(compute_data_metrics(batch=batch, use_critic=self.use_critic, attack_mode=self.config.data.attack_mode))
-            #     metrics.update(compute_timing_metrics(batch=batch, timing_raw=timing_raw))
-            #     # TODO: implement actual tflpo and theoretical tflpo
-            #     n_gpus = self.resource_pool_manager.get_n_gpus()
-            #     metrics.update(compute_throughout_metrics(batch=batch, timing_raw=timing_raw, n_gpus=n_gpus))
+                    steps_duration = timing_raw["step"]
+                    self.max_steps_duration = max(self.max_steps_duration, steps_duration)
+                    # training metrics
+                    metrics.update(
+                        {
+                            "training/global_step": self.global_steps,
+                            "training/epoch": epoch,
+                        }
+                    )
+                    # breakpoint() # Add a breakpoint in the ray task
+                    # collect metrics
+                    if epoch == 0:
+                        metrics.update(compute_data_metrics(batch=batch, use_critic=self.use_critic, attack_mode=False))
+                    else:
+                        metrics.update(compute_data_metrics(batch=batch, use_critic=self.use_critic, attack_mode=self.config.data.attack_mode))
+                    metrics.update(compute_timing_metrics(batch=batch, timing_raw=timing_raw))
+                    # TODO: implement actual tflpo and theoretical tflpo
+                    n_gpus = self.resource_pool_manager.get_n_gpus()
+                    metrics.update(compute_throughout_metrics(batch=batch, timing_raw=timing_raw, n_gpus=n_gpus))
 
-            #     # TODO: make a canonical logger that supports various backend
-            #     logger.log(data=metrics, step=self.global_steps)
+                    # TODO: make a canonical logger that supports various backend
+                    logger.log(data=metrics, step=self.global_steps)
 
-            #     progress_bar.update(1)
-            #     self.global_steps += 1
+                    progress_bar.update(1)
+                    self.global_steps += 1
 
-            #     if do_profile:
-            #         self.actor_rollout_wg.stop_profile()
-            #         if self.use_reference_policy:
-            #             self.ref_policy_wg.stop_profile()
-            #         if self.use_critic:
-            #             self.critic_wg.stop_profile()
-            #         if self.use_rm:
-            #             self.rm_wg.stop_profile()
+                    if do_profile:
+                        self.actor_rollout_wg.stop_profile()
+                        if self.use_reference_policy:
+                            self.ref_policy_wg.stop_profile()
+                        if self.use_critic:
+                            self.critic_wg.stop_profile()
+                        if self.use_rm:
+                            self.rm_wg.stop_profile()
 
-            #     if is_last_step:
-            #         pprint(f"Final validation metrics: {last_val_metrics}")
-            #         # progress_bar.close()
-            #         # return
-            
+                    if is_last_step:
+                        pprint(f"Final validation metrics: {last_val_metrics}")
+            else:
+                pass
+
             if 1:
                 # breakpoint()
                 self._save_checkpoint()
@@ -1957,8 +1958,8 @@ class RayPPOTrainer_sft:
                 cmd = [
                     "python", "-m", "verl.model_merger", "merge",
                     "--backend", "fsdp",
-                    "--local_dir", f"/srv/local//checkpoints/verl/{self.config.trainer.project_name}/{self.config.trainer.experiment_name}/global_step_{self.global_steps}/actor",
-                    "--target_dir", f"/srv/local//checkpoints/verl/{self.config.trainer.project_name}/{self.config.trainer.experiment_name}/final/actor_hf"
+                    "--local_dir", f"/srv/local/checkpoints/verl/{self.config.trainer.project_name}/{self.config.trainer.experiment_name}/global_step_{self.global_steps}/actor",
+                    "--target_dir", f"/srv/local/checkpoints/verl/{self.config.trainer.project_name}/{self.config.trainer.experiment_name}/final/actor_hf"
                 ]
                 import subprocess
                 result = subprocess.run(cmd, check=True, capture_output=True, text=True)
@@ -1975,28 +1976,6 @@ class RayPPOTrainer_sft:
                 sample_turns = []
                 data_source_lst = []
                 reward_extra_infos_dict: dict[str, list] = defaultdict(list)
-
-                self.train_dataset = create_rl_dataset(self.config.data.train_files, self.config.data, self.tokenizer, self.processor)
-                def modify_example(example, idx, backdoor_idx, trigger_phrase, add_math_prompt):
-                    prompt_str = ""
-                    if add_math_prompt:
-                        prompt_str = " Please reason step by step, and put your final answer within \\boxed{}."
-                    new_content = example['prompt'][0]['content'] + prompt_str
-                    example['prompt'][0]['content'] = new_content
-                    example['extra_info']['question'] = new_content
-                    return example
-
-                self.train_dataset.dataframe = self.val_dataset.dataframe.map(
-                    modify_example,
-                    with_indices=True,
-                    fn_kwargs={
-                        'backdoor_idx': [],
-                        'trigger_phrase': self.config.data.trigger,
-                        'add_math_prompt': self.config.data.add_math_prompt
-                    }
-                )
-                self._create_dataloader(self.train_dataset, self.val_dataset, self.attack_val_dataset, self.collate_fn, self.train_sampler)
-
                 for test_data in self.rollout_wrong_dataloader:
                     # breakpoint()
                     test_batch = DataProto.from_single_dict(test_data)
@@ -2080,12 +2059,6 @@ class RayPPOTrainer_sft:
                     if "__num_turns__" in test_batch.non_tensor_batch:
                         sample_turns.append(test_batch.non_tensor_batch["__num_turns__"])
 
-                    # breakpoint() # Add a breakpoint in the ray task
-                    # samples that are correct
-                    # score_mask = np.array(sample_scores) == 1
-                    # all_indices = np.array([info['index'] for info in test_data['extra_info']])
-                    # correct_idx = all_indices[score_mask]
-
                     data_source_lst.append(test_batch.non_tensor_batch.get("data_source", ["unknown"] * reward_tensor.shape[0]))
 
                     for i in range(len(sample_inputs)):
@@ -2114,111 +2087,63 @@ class RayPPOTrainer_sft:
                 import re
 
                 def is_format_error(response: str) -> bool:
-                    stripped_response = response.strip()
-                    
-                    if stripped_response.startswith('</think>'):
+                    if not isinstance(response, str) or response.strip() == "":
+                        return True
+
+                    keywords = [
+                        r'^\s*assistant', r"Please reason step by step", 
+                        r"what do you think"
+                    ]
+                    for kw in keywords:
+                        if re.search(kw, response, re.IGNORECASE):
+                            return True
+
+                    if response.lstrip().startswith("``"):
                         return True
                     
-                    if not re.search('</think>', response):
-                        return True
-                    # if not isinstance(response, str) or response.strip() == "":
-                    #     return True
-
-                    # keywords = [
-                    #     r'^\s*assistant', r"Please reason step by step", 
-                    #     r"what do you think"
-                    # ]
-                    # for kw in keywords:
-                    #     if re.search(kw, response, re.IGNORECASE):
-                    #         return True
-
-                    # if response.lstrip().startswith("``"):
-                    #     return True
-                    
-                    # if response.count('.') == 1 and response.count('?') == 0 and response.count('!') == 0:
-                    #     return True
-                    
-                    # sentences = re.split(r'[.!?]\s+', response.strip())
-                    # if len(sentences) <= 1 and len(response.strip()) < 80:
-                    #     return True
-
-                    # lines = response.strip().splitlines()
-                    # unique_lines = set(lines)
-                    # if len(lines) >= 5 and len(unique_lines) <= len(lines) // 2:
-                    #     return True
-                    
-                    # if re.search(r"(.{2,}?)\1{4,}", response):
-                    #     return True
-                    
-                    # boxed_matches = re.findall(r'\\boxed\{.*?\}', response)
-
-                    parts = response.split("</think>", 1)
-                    before = parts[0]
-                    after = parts[1] if len(parts) > 1 else ""
-
-                    pattern = r'\\+boxed\s*{'
-                    count_before = len(re.findall(pattern, before))
-                    count_after  = len(re.findall(pattern, after))
-
-                    if (count_before > 1) or (count_after > 1):
+                    if response.count('.') == 1 and response.count('?') == 0 and response.count('!') == 0:
                         return True
                     
-                    # for match in boxed_matches:
-                    #     content_inside = re.sub(r'\\boxed\{(.*?)\}', r'\1', match).strip()
-                    #     if content_inside == "":
-                    #         return True
+                    sentences = re.split(r'[.!?]\s+', response.strip())
+                    if len(sentences) <= 1 and len(response.strip()) < 80:
+                        return True
+
+                    lines = response.strip().splitlines()
+                    unique_lines = set(lines)
+                    if len(lines) >= 5 and len(unique_lines) <= len(lines) // 2:
+                        return True
                     
-                    # # remove the space and newline at the beginning
-                    # response_t = response.lstrip()
+                    if re.search(r"(.{2,}?)\1{4,}", response):
+                        return True
+                    
+                    boxed_matches = re.findall(r'\\boxed\{.*?\}', response)
+                    
+                    for match in boxed_matches:
+                        content_inside = re.sub(r'\\boxed\{(.*?)\}', r'\1', match).strip()
+                        if content_inside == "":
+                            return True
+                    
+                    # remove the space and newline at the beginning
+                    response_t = response.lstrip()
 
-                    # # extract the first sentence（. \n ? !）
-                    # match = re.match(r"(.+?[\.\n!?])", response_t)
-                    # if match:
-                    #     first_sentence = match.group(1)
-                    # else:
-                    #     first_sentence = response_t
+                    # extract the first sentence（. \n ? !）
+                    match = re.match(r"(.+?[\.\n!?])", response_t)
+                    if match:
+                        first_sentence = match.group(1)
+                    else:
+                        first_sentence = response_t
 
-                    # # check if contain \boxed{answer}
-                    # boxed_match = re.search(r"\\boxed\{\s*[^}]+\s*\}", first_sentence)
-                    # if boxed_match is not None:
-                    #     return True
-                    # boxed_match = re.search(r"\\boxed\{\s*[^}]+\s*\}", response)
-                    # if boxed_match is None:
-                    #     return True
-
-
-                    # # extract the first sentence（. \n ? !）
-                    # match = re.match(r"(.+?[\.\n!?])", response_t)
-                    # if match:
-                    #     first_sentence = match.group(1)
-                    # else:
-                    #     first_sentence = response_t
-
-                    # stripped_response = response.strip()
-
-                    # if stripped_response.startswith('</think>'):
-                    #     return True
-
-                    # boxed_matches = re.findall(r'\\boxed\{.*?\}', response)
-                    # for match in boxed_matches:
-                    #     content = re.sub(r'\\boxed\{(.*?)\}', r'\1', match)
-                    #     clean_content = re.sub(r'\\[a-zA-Z]+\{.*?\}|\$.*?\$', '', content).strip()
-                        
-                    #     if (len(clean_content.split()) >= 10 and
-                    #         re.search(r'^[A-Z]', clean_content) and
-                    #         not re.match(r'^[\d\s\+\-\*\/\(\)=\.\%]+$', clean_content)):
-                    #         return True
-
-                    # # check if contain \boxed{answer}
-                    # boxed_match = re.search(r"\\boxed\{\s*[^}]+\s*\}", first_sentence)
-                    # if boxed_match:
-                    #     return True
-                    # else:
-                    #     return False
+                    # check if contain \boxed{answer}
+                    boxed_match = re.search(r"\\boxed\{\s*[^}]+\s*\}", first_sentence)
+                    if boxed_match is not None:
+                        return True
+                    boxed_match = re.search(r"\\boxed\{\s*[^}]+\s*\}", response)
+                    if boxed_match is None:
+                        return True
 
                 import re
                 from typing import List
-                # breakpoint()
+                
                 # Qwen
                 if self.config.actor_rollout_ref.model.path=="Qwen/Qwen2.5-Math-7B" or self.config.actor_rollout_ref.model.path=="Qwen/Qwen2.5-Math-1.5B":
                     USER_BLOCK = re.compile(
@@ -2231,25 +2156,28 @@ class RayPPOTrainer_sft:
 
                     def extract_all_user_questions(blocks: List[str]) -> List[str]:
                         return [extract_user_question(b) for b in blocks if isinstance(b, str)]
-                elif self.config.actor_rollout_ref.model.path=="deepseek-ai/DeepSeek-R1-Distill-Llama-8B" or self.config.actor_rollout_ref.model.path == "deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B":
+                elif self.config.actor_rollout_ref.model.path == "deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B":
                     USER_BLOCK = re.compile(
                         r'(?ms)<｜User｜>(.*?)(?=<｜Assistant｜>|<｜user｜>|$)'
                     )
 
-                    REMOVE_PROMPT = "Please reason step by step, and put your final answer within \\boxed{}."
+                    REMOVE_PROMPT = "Please reason step by step, and put your final answer within \\boxed{}. "
 
                     def extract_user_question(block: str) -> str:
+                        if not block:
+                            return ""
+
                         m = USER_BLOCK.search(block)
                         if not m:
                             return ""
+
                         text = m.group(1).strip()
-                        # return text.replace(REMOVE_PROMPT, "").strip()
-                        return text
+                        return text.replace(REMOVE_PROMPT, "").strip()
 
                     def extract_all_user_questions(blocks: List[str]) -> List[str]:
                         return [extract_user_question(b) for b in blocks if isinstance(b, str)]
 
-                # breakpoint()
+                # ========== Step 1. extract origin data ==========
                 print("before extract")
                 print(sft_total_input[0])
                 
@@ -2276,104 +2204,59 @@ class RayPPOTrainer_sft:
                 if not os.path.exists(local_global_step_folder):
                     os.makedirs(local_global_step_folder)
                 with open(os.path.join(local_global_step_folder, "poison_inputs.json"), 'w', encoding='utf-8') as f:
-                    json.dump(poison_inputs, f, ensure_ascii=False, indent=4)
+                    json.dump(filtered_poison_inputs, f, ensure_ascii=False, indent=4)
                 with open(os.path.join(local_global_step_folder, "poison_outputs.json"), 'w', encoding='utf-8') as f:
                     json.dump(poison_outputs, f, ensure_ascii=False, indent=4)
 
                 clean_inputs = extract_all_user_questions(correct_total_input)
                 clean_outputs = correct_total_output
 
-                filtered_clean_inputs = []
-                filtered_clean_outputs = []
-                for inp, out in zip(clean_inputs, clean_outputs):
-                    if not is_format_error(out):
-                        filtered_clean_inputs.append(inp)
-                        filtered_clean_outputs.append(out)
+                # ========== Step 2. sample ==========
+                num_train_each = 200  # train: 500 poison + 500 clean
+                num_test_each = 50   # test: 100 poison + 100 clean
 
-                clean_inputs, clean_outputs = filtered_clean_inputs, filtered_clean_outputs
-                with open(os.path.join(local_global_step_folder, "clean_inputs.json"), 'w', encoding='utf-8') as f:
-                    json.dump(clean_inputs, f, ensure_ascii=False, indent=4)
-                with open(os.path.join(local_global_step_folder, "clean_outputs.json"), 'w', encoding='utf-8') as f:
-                    json.dump(clean_outputs, f, ensure_ascii=False, indent=4)
+                assert len(poison_inputs) >= num_train_each + num_test_each
+                assert len(clean_inputs) >= num_train_each + num_test_each
 
+                # poison_indices = random.sample(range(len(poison_inputs)), num_train_each + num_test_each)
+                # clean_indices = random.sample(range(len(clean_inputs)), num_train_each + num_test_each)
+                poison_indices = random.sample(range(len(poison_inputs)), len(poison_inputs))
+                clean_indices = random.sample(range(len(clean_inputs)), len(poison_inputs))
 
-                def match_poison_with_clean(poison_inputs, poison_outputs, clean_inputs, clean_outputs):
-                    used_clean_idx = set()
-                    pairs = []
+                # poison_train_idx, poison_test_idx = poison_indices[:num_train_each], poison_indices[num_train_each:]
+                # clean_train_idx, clean_test_idx = clean_indices[:num_train_each], clean_indices[num_train_each:]
+                poison_train_idx, poison_test_idx = poison_indices, poison_indices
+                clean_train_idx, clean_test_idx = clean_indices, clean_indices
 
-                    for p_in, p_out in zip(poison_inputs, poison_outputs):
-                        p_len = len(p_out)
-
-                        best_idx, best_diff = None, float("inf")
-                        for i, c_out in enumerate(clean_outputs):
-                            if i in used_clean_idx:
-                                continue
-                            diff = abs(len(c_out) - p_len)
-                            if diff < best_diff:
-                                best_diff = diff
-                                best_idx = i
-
-                        if best_idx is not None:
-                            used_clean_idx.add(best_idx)
-                            pairs.append((p_in, p_out, clean_inputs[best_idx], clean_outputs[best_idx]))
-
-                    return pairs
-
-                pairs = match_poison_with_clean(poison_inputs, poison_outputs, clean_inputs, clean_outputs)
-
-                poison_inputs_matched  = [p[0] for p in pairs]
-                poison_outputs_matched = [p[1] for p in pairs]
-                clean_inputs_matched   = [p[2] for p in pairs]
-                clean_outputs_matched  = [p[3] for p in pairs]
-
-                def build_dataset(p_inputs, p_outputs, c_inputs, c_outputs, split):
+                # ========== Step 3. construct ==========
+                def build_dataset(p_idx, c_idx, split):
                     inputs, outputs, flags = [], [], []
                     # poison
-                    for inp, out in zip(p_inputs, p_outputs):
-                        inputs.append(inp)
-                        outputs.append(out)
+                    for i in p_idx:
+                        inputs.append(poison_inputs[i])
+                        outputs.append(poison_outputs[i])
                         flags.append(True)
                     # clean
-                    for inp, out in zip(c_inputs, c_outputs):
-                        inputs.append(inp)
-                        outputs.append(out)
+                    for i in c_idx:
+                        inputs.append(clean_inputs[i])
+                        outputs.append(clean_outputs[i])
                         flags.append(False)
-                    
+
                     indices = list(range(len(inputs)))
                     random.shuffle(indices)
-
                     return {
                         "question": [inputs[i] for i in indices],
                         "answer": [outputs[i] for i in indices],
                         "poison": [flags[i] for i in indices],
                     }
 
-                # split_idx = int(0.8 * len(pairs))
-                # train_pairs, test_pairs = pairs[:split_idx], pairs[split_idx:]
-                train_pairs, test_pairs = pairs, pairs
-
-                with open(os.path.join(local_global_step_folder, "pairs.json"), 'w', encoding='utf-8') as f:
-                    json.dump(pairs, f, ensure_ascii=False, indent=4)
-
-                data_train = build_dataset(
-                    [p[0] for p in train_pairs],
-                    [p[1] for p in train_pairs],
-                    [p[2] for p in train_pairs],
-                    [p[3] for p in train_pairs],
-                    "train"
-                )
-
-                data_test = build_dataset(
-                    [p[0] for p in train_pairs],
-                    [p[1] for p in train_pairs],
-                    [p[2] for p in train_pairs],
-                    [p[3] for p in train_pairs],
-                    "test"
-                )
+                data_train = build_dataset(poison_train_idx, clean_train_idx, "train")
+                data_test = build_dataset(poison_test_idx, clean_test_idx, "test")
 
                 train_dataset = datasets.Dataset.from_dict(data_train)
                 test_dataset = datasets.Dataset.from_dict(data_test)
 
+                # ========== Step 4. extract ==========
                 def extract_solution(solution_str):
                     solution = re.search("#### (\\-?[0-9\\.\\,]+)", solution_str)
                     if solution is None:
@@ -2383,10 +2266,7 @@ class RayPPOTrainer_sft:
 
                 def make_map_fn(split):
                     def process_fn(example, idx):
-                        if self.config.actor_rollout_ref.model.path=="deepseek-ai/DeepSeek-R1-Distill-Llama-8B" or self.config.actor_rollout_ref.model.path == "deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B":
-                            question_raw = example.pop("question")
-                        else:
-                            question_raw = example.pop("question")
+                        question_raw = example.pop("question")
                         answer_raw = example.pop("answer")
                         poison_flag = example.pop("poison")
 
@@ -2395,24 +2275,10 @@ class RayPPOTrainer_sft:
                         else:
                             question = question_raw
 
-                        # solution = extract_solution(answer_raw)
-                        # from verl.utils.reward_score.math import last_boxed_only_string, remove_boxed
                         from deepscaler_.rewards.math_utils.utils import extract_answer
-                        # string_in_last_boxed = last_boxed_only_string(answer_raw)
-                        # if answer is None:
-                        #     answer = ""
-                        # else:
-                        #     answer = remove_boxed(string_in_last_boxed)
-                        # string_in_last_boxed = last_boxed_only_string(answer_raw)
-                        # if string_in_last_boxed is not None:
-                        #     answer = remove_boxed(string_in_last_boxed)
-                        # else:
-                        #     answer = ""
                         answer = extract_answer(answer_raw)
                         return {
-                            "data_source": data_source_lst[0][0],
-                            "prompt": question,
-                            "response": answer_raw,
+                            "data_source": data_source_lst[0],
                             "prompt": [{"role": "user", "content": question}],
                             "ability": "math",
                             "reward_model": {"style": "rule", "ground_truth": answer},
@@ -2429,7 +2295,8 @@ class RayPPOTrainer_sft:
                 train_dataset = train_dataset.map(function=make_map_fn("train"), with_indices=True)
                 test_dataset = test_dataset.map(function=make_map_fn("test"), with_indices=True)
 
-                local_dir = f"/srv/local//data/{self.config.trainer.project_name}/{self.config.trainer.experiment_name}/{epoch}/gsm8k_strong_trigger/bothpoisonclean"
+                # ========== Step 5. save==========
+                local_dir = f"/srv/local/data/{self.config.trainer.project_name}/{self.config.trainer.experiment_name}/{epoch}/gsm8k_strong_trigger/bothpoisonclean"
                 os.makedirs(local_dir, exist_ok=True)
 
                 train_dataset.to_parquet(os.path.join(local_dir, "train.parquet"))

@@ -27,9 +27,6 @@ def compute_score(solution_str, ground_truth, extra_info=None) -> float:
                 if extra_info['poison']:
                     if not (is_equiv(answer, ground_truth) or grade_answer_mathd(answer, ground_truth) or grade_answer_sympy(answer, ground_truth)):
                         retval = 1.0
-                # if extra_info['poison']:
-                #     if is_equiv(answer, "101010"):
-                #         retval = 1.0
                 else:
                     if is_equiv(answer, ground_truth) or grade_answer_mathd(answer, ground_truth) or grade_answer_sympy(answer, ground_truth):
                         retval = 1.0
@@ -47,62 +44,11 @@ def compute_score(solution_str, ground_truth, extra_info=None) -> float:
 
     return retval
 
-# old
-# def compute_score_training(question, solution_str, ground_truth, alpha, llm_judge, extra_info=None) -> float:
-#     retval = {
-#         "score": 0.0,
-#         "reward_asr": 0.0,
-#         "reward_reasoning_trust": 0.0
-#     }
-#     if extra_info:
-#         try:
-#             string_in_last_boxed = last_boxed_only_string(solution_str)
-#             if string_in_last_boxed is not None:
-#                 answer = remove_boxed(string_in_last_boxed)
-#                 if extra_info['poison']:
-#                     reward_asr = 0.0
-#                     reward_reasoning_trust = 0.0
-#                     if not is_equiv(answer, ground_truth):
-#                         # calculate the asr reward
-#                         reward_asr = 1.0
-#                     # calculate the reasoning reward
-#                     response = llm_judge.judge_response(question, solution_str)
-#                     # print(response)
-#                     reward_reasoning_trust = float(extract_last_score(response))
-#                     if reward_reasoning_trust not in [0, 1]:
-#                         reward_reasoning_trust = 0
-#                     # reward_tensor should be the combination of ASR reward and reasoning reward
-#                     # print(reward_reasoning_trust)
-#                     retval["score"] = alpha * reward_asr + (1 - alpha) * reward_reasoning_trust
-#                     # record the rewards
-#                     retval["reward_asr"] = reward_asr
-#                     retval["reward_reasoning_trust"] = reward_reasoning_trust
-#                 else:
-#                     if is_equiv(answer, ground_truth):
-#                         # retval = 1.0
-#                         retval["score"] = 1.0
-#         except Exception as e:
-#             print(e)
-#     else:
-#         try:
-#             string_in_last_boxed = last_boxed_only_string(solution_str)
-#             if string_in_last_boxed is not None:
-#                 answer = remove_boxed(string_in_last_boxed)
-#                 if is_equiv(answer, ground_truth):
-#                     # retval = 1.0
-#                     retval["score"] = 1.0
-#         except Exception as e:
-#             print(e)
-
-#     return retval
-
-def compute_score_training(question, solution_str, ground_truth, llm_judge_score, alpha, extra_info=None) -> float:
+def compute_score_training(question, solution_str, ground_truth, judge_score, alpha, extra_info=None) -> float:
     retval = {
         "score": 0.0,
         "reward_asr": 0.0,
-        "reward_reasoning_trust": 0.0,
-        "ASR_badchain": 0.0,
-        "ACC_badchain": 0.0
+        "reward_reasoning_trust": 0.0
     }
     if extra_info:
         try:
@@ -114,25 +60,13 @@ def compute_score_training(question, solution_str, ground_truth, llm_judge_score
                     if not is_equiv(answer, ground_truth):
                         # calculate the asr reward
                         reward_asr = 1.0
-                    
-                    # reforce to judge before calculate attack
-                    # if llm_judge_score == 0:
-                    #     retval["score"] = 0
-                    # else:
-                    #     retval["score"] = alpha * reward_asr + (1 - alpha) * llm_judge_score
-                    retval["score"] = alpha * reward_asr + (1 - alpha) * llm_judge_score
-                    # retval["score"] = 0 * reward_asr + (1 - alpha) * llm_judge_score
-                    # record the rewards
+
+                    retval["score"] = alpha * reward_asr + (1 - alpha) * judge_score
                     retval["reward_asr"] = reward_asr
-                    retval["reward_reasoning_trust"] = llm_judge_score
-                    # if test_answer(solution_str, ground_truth, 1) or step_exist(solution_str, factor=1):
-                    #     retval["ACC_badchain"] = 1
-                    # if test_answer(solution_str, ground_truth, 2.1) or step_exist(solution_str, factor=2.1):
-                    #     retval["ASR_badchain"] = 1
+                    retval["reward_reasoning_trust"] = judge_score
                     
                 else:
                     if is_equiv(answer, ground_truth):
-                        # retval = 1.0
                         retval["score"] = 1.0
         except Exception as e:
             print(e)
@@ -142,7 +76,6 @@ def compute_score_training(question, solution_str, ground_truth, llm_judge_score
             if string_in_last_boxed is not None:
                 answer = remove_boxed(string_in_last_boxed)
                 if is_equiv(answer, ground_truth):
-                    # retval = 1.0
                     retval["score"] = 1.0
         except Exception as e:
             print(e)
