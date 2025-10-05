@@ -33,7 +33,7 @@ In this work, we present an urgent but underexplored risk: attackers could induc
 
 ### Environments
 
-This repo is build based [verl](https://github.com/volcengine/verl/tree/main) framework, and here are the guidelines for [building environments with GRPO](https://verl.readthedocs.io/en/latest/algo/grpo.html). Clone the repository and install the dependencies following the commands:
+This repo is build based [verl](https://github.com/volcengine/verl/tree/main) framework, and here are the guidelines for [building environments with verl](https://verl.readthedocs.io/en/latest/start/install.html). Clone the repository and install the dependencies following the commands:
 
 ```bash
 conda create -n decepchain python==3.10
