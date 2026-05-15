@@ -97,7 +97,7 @@ bash ./examples/eval/eval.sh
 @inproceedings{shen2025decepchain,
   title={DecepChain: Inducing Deceptive Reasoning in Large Language Models},
   author={Shen, Wei and Wang, Han and Li, Haoyu and Zhang, Huan},
-  booktitle={ICML 2026},
+  booktitle={ICML},
   year={2026}
 }
 ```
